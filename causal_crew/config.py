@@ -50,7 +50,9 @@ PLANNER_CONTEXT_DAYS = 7      # context notes from this many days before the cur
 GEMINI_TIMEOUT_S = 45
 # Separate from Cognee's LLM_MODEL: Gemini's free tier is 20 requests/day per
 # model, and Cognee's ingest uses many. The planner makes one call per run.
-PLANNER_MODEL = "gemini-2.5-flash-lite"
+# 2.5-flash-lite ran out during the build, so the planner moved to a model
+# with its own untouched daily allowance.
+PLANNER_MODEL = "gemini-3-flash-preview"
 # Investigators get their own model so they don't share the planner's daily quota.
 INVESTIGATOR_MODEL = "gemini-3.1-flash-lite-preview"
 

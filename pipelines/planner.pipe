@@ -16,8 +16,8 @@
       "id": "llm_gemini_1",
       "provider": "llm_gemini",
       "config": {
-        "profile": "gemini-2_5-flash-lite",
-        "gemini-2_5-flash-lite": {
+        "profile": "gemini-3-flash-preview",
+        "gemini-3-flash-preview": {
           "apikey": "${ROCKETRIDE_GEMINI_KEY}"
         },
         "parameters": {}
