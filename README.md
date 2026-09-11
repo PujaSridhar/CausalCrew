@@ -2,75 +2,149 @@
 
 **Is the number real? If yes, every lead gets its own investigator — and the evidence decides.**
 
-When a business metric moves, Causal Crew first checks whether the number can
-be trusted. If the data is broken — a day loaded twice, a feed that stopped, a
-unit change — it stops and says which check failed. If the data is sound, a
-planner turns the data and company context into competing leads, and each lead
-gets its own investigator agent with its own isolated database. A
-deterministic judge weighs the evidence and hands down verdicts. Verified
-findings become memory for the next question.
+When a business metric moves ("revenue dropped 14% in two weeks — why?"), two very
+different things can be true:
 
-Causal Crew does attribution, not causal proof: it reports which segments
-account for a change, by how much, and what context lines up with it.
+1. **The number is wrong.** A day loaded twice, a feed stopped, cents became dollars.
+   The business is fine; the dashboard is lying.
+2. **The number is right.** Something real happened, and finding it means following
+   several leads — a region, a channel, a pricing change — each needing its own deep
+   drill-down. Done by hand, that takes days, and whoever investigates anchors on the
+   first plausible story.
 
-See [CLAUDE.md](CLAUDE.md) for the full spec.
+Causal Crew checks the number first and **stops** if it can't be trusted. If it can,
+every lead gets an independent investigator with its own isolated database, and a
+deterministic judge compares the evidence on equal footing. Verified findings become
+memory for the next question.
 
-## Pipeline
+It does **attribution, not causal proof**: which segments account for the change, by
+how much, and what context lines up with it.
 
-1. **Health check** — deterministic PASS/FAIL on freshness, row counts, duplicates, null spikes, and scale breaks.
-2. **Context** — Cognee turns changelogs and incident notes into searchable knowledge.
-3. **Planner** — proposes 3–4 leads, both data-driven and context-driven.
-4. **Investigators** — one per lead, in parallel, each in its own Hotdata database.
-5. **Judge** — deterministic checks for noise, seasonality, consistency, and timing; overlap merge; verdicts.
-6. **Report** — every number with the SQL behind it.
-7. **Memory** — findings written back to Cognee.
+## How it works
 
-Orchestrated as a RocketRide pipeline.
-
-## Run the demo
-
-```bash
-.venv/bin/python -m causal_crew.run --broken   # Run A: health check fails, names the duplicated day, stops
-.venv/bin/python -m causal_crew.run            # Run B: planner, parallel investigators, judge, report
+```mermaid
+flowchart TD
+    Q[Question + windows] --> H{1. Health check<br/>deterministic}
+    H -- FAIL --> S[Stop: don't trust this number yet<br/>names the check and the day]
+    H -- PASS --> P[2-3. Planner<br/>data-driven leads from SQL<br/>+ context leads from Gemini via RocketRide]
+    P --> I1[4. Investigator<br/>own workspace]
+    P --> I2[4. Investigator<br/>own workspace]
+    P --> I3[4. Investigator<br/>own workspace]
+    I1 & I2 & I3 --> J[5. Judge<br/>noise, seasonality, consistency, timing<br/>overlap merge, verdicts]
+    J --> R[6. Report<br/>SQL behind every number]
+    J --> M[7. Memory<br/>verified findings for next time]
 ```
 
-Reports land in `reports/` as Markdown and JSON, with the SQL behind every number.
-
-## What's built
-
-| Stage | Module | Notes |
+| Stage | Module | What it does |
 |---|---|---|
-| Health check | `causal_crew/health.py` | freshness, row counts, duplicates, null spikes, scale break |
-| Planner | `causal_crew/planner.py` | data-driven leads from SQL; Gemini adds context leads; title-keyword fallback if Gemini is down |
-| Investigator | `causal_crew/investigator.py`, `workspace.py` | one isolated DuckDB database per lead, behind a small `Workspace` interface. Hotdata instant databases with one fork per investigator are the drop-in upgrade; account signup needed a credit card at the event, so the demo runs on DuckDB |
-| Judge | `causal_crew/judge.py` | noise, seasonality, consistency, timing, overlap merge, verdicts |
-| Runner + report | `causal_crew/run.py` | stages in order, investigators in parallel |
-| Memory | `scripts/ingest_context.py` | loads context notes into Cognee; the planner reads the notes directly as the spec's fallback |
-| Orchestration | RocketRide, `pipelines/planner.pipe` | the planner's Gemini call runs as a RocketRide pipeline on staging; direct Gemini, then a keyword match, are fallbacks |
+| 1. Health check | `causal_crew/health.py` | Freshness, row counts (robust z + relative floor), duplicate order ids, days copied under new ids, null spikes, unit/scale breaks. Any failure stops the run. |
+| 2-3. Planner | `causal_crew/planner.py`, `rocketride_llm.py` | The largest single-dimension deltas always become leads (SQL). Gemini, run as a RocketRide pipeline, adds up to two leads grounded in nearby changelog notes and prior findings. |
+| 4. Investigators | `causal_crew/investigator.py`, `workspace.py` | One per lead, in parallel, each in its own database: size the lead, drill down two levels, find the change point, split volume from order value, match context. Every query is logged. |
+| 5. Judge | `causal_crew/judge.py` | Deterministic evidence checks, overlap merge, ranking, verdicts. The LLM never writes a verdict. |
+| 6. Report | `causal_crew/run.py` | Markdown + JSON, with the SQL behind every number. |
+| 7. Memory | `causal_crew/memory.py` | Supported findings are appended to `memory/findings.jsonl` and fed to the planner next run; optionally pushed to Cognee (`--remember`). |
 
-## Setup
+Every threshold lives in [`causal_crew/config.py`](causal_crew/config.py).
 
-```bash
-uv venv .venv --python 3.13
-uv pip install --python .venv/bin/python -r requirements.txt
-brew install hotdata-dev/tap/cli snyk-cli
-cp .env.example .env    # then fill in keys
-hotdata auth login      # opens a browser
-snyk auth               # opens a browser
-.venv/bin/python scripts/check_env.py   # PASS/FAIL/SKIP per service
-```
+## The demo
 
-## Demo data
-
-The data is **synthetic**, with a planted cause. See
-[PLANTED_CAUSE.md](PLANTED_CAUSE.md) for exactly what was planted.
+The data is **synthetic, with a planted cause** — see [PLANTED_CAUSE.md](PLANTED_CAUSE.md).
+The West region's flat shipping fee rises from $4.99 to $8.99 on 2026-08-27; West orders
+fall ~34%, concentrated in new customers. A decoy (the annual summer email campaign
+ending two days earlier) dips email orders in every region — and did the same last year.
 
 ```bash
-.venv/bin/python data/generate_orders.py   # ~10s, deterministic
-.venv/bin/python data/verify_orders.py     # exits non-zero if the demo wouldn't read as designed
+make setup     # venv + dependencies
+make data      # generate 637k orders (+ a broken copy) and verify the planted story
+make test      # 41 unit tests, no network
+make demo-a    # Run A: broken data
+make demo-b    # Run B: clean data
 ```
 
-Outputs `data/orders.{parquet,csv}` (clean) and `data/orders_broken.{parquet,csv}`
-(one day loaded twice). Generated files are gitignored.
+**Run A — a day loaded twice.** The health check fails on row counts (+73%, |z| = 28.7)
+and duplicate order ids, both naming 2026-09-03, and the run stops.
 
-Schema: `order_id, date, region, product_category, channel, customer_type, units, revenue`
+**Run B — clean data** (revenue −14.4%):
+
+| # | Lead | Final segment | Share of change | Verdict |
+|---|---|---|---|---|
+| 1 | West | West, new customers | 58.9% | **SUPPORTED + CONTEXT_LINKED** — change point 2026-08-27, same day as the fee note; volume explains ~100% |
+| 2 | Email | Email | 16.4% | **REJECTED (seasonality)** — the same windows last year dropped 87% as much |
+| 3 | New customers | West, new customers | — | **MERGED into West** — the same lost orders |
+| 4 | Web in West | West, web | — | **MERGED into West** |
+
+## Design decisions
+
+- **Deterministic core, LLM at the edges.** Health checks, drill-downs, statistics, and
+  verdicts are plain Python over SQL, with unit tests. The LLM proposes leads and writes
+  hypotheses; it never produces a number or a verdict. Its output is validated against
+  real dimension values before use.
+- **Context can't decide which leads exist.** The largest data deltas are always leads;
+  Gemini only adds to them. Otherwise a misleading changelog note could steer the whole
+  investigation.
+- **Isolation per investigator.** Each lead gets its own database with a private copy of
+  the data and its own scratch tables, and sees only its own lead. Findings can't bias
+  each other and each one is auditable on its own. The `Workspace` class is the seam:
+  today it's a local DuckDB file per lead; Hotdata instant databases with one
+  `fork` per investigator are the drop-in upgrade (signup required a credit card at
+  the event).
+- **The health gate must not flag real business moves.** Robust z alone flags the real
+  West drop (|z| = 6.2 on a −16% day). A day is flagged only when it is both statistically
+  unusual *and* more than 25% off the trailing median — a doubled or missing day always is.
+- **Drill down by concentration, not size.** An investigator narrows into a sub-segment
+  only if its share of the change is ≥1.25× its share of baseline revenue. Otherwise it
+  would always descend into the biggest bucket and report noise as a finding.
+- **Statistics that fit revenue.** The bootstrap resamples days, not orders (resampling a
+  fixed number of orders can't see volume changes). Seasonality compares percent changes,
+  so year-over-year growth doesn't shrink last year's effect. Consistency requires
+  sub-segments holding ≥80% of baseline revenue to move with the aggregate — the guard
+  against Simpson's paradox. Overlap is measured on lost orders.
+- **Graceful degradation.** The planner tries Gemini via RocketRide, then Gemini
+  directly, then a keyword match on changelog titles; the report names which one
+  answered. Cognee is opt-in. The demo never depends on an LLM being up.
+- **No secrets in the repo.** `pipelines/planner.pipe` holds a `${ROCKETRIDE_GEMINI_KEY}`
+  placeholder that RocketRide fills at run time; keys live only in `.env`.
+
+### Verdict rules (`judge.verdict`)
+
+| Condition | Verdict |
+|---|---|
+| Noise, seasonality, or consistency fails | `REJECTED (<failed checks>)` |
+| All pass and share of change ≥ 30% | `SUPPORTED`, plus `CONTEXT_LINKED` if a note lands within ±3 days of the change point |
+| All pass, share < 30% | `INSUFFICIENT_EVIDENCE` |
+| > 50% of its lost orders sit inside a stronger finding | `MERGED into <lead>` |
+
+## Sponsor tools
+
+| Tool | Role here |
+|---|---|
+| **RocketRide** | Runs the planner's LLM stage as a pipeline on the staging server (`pipelines/planner.pipe`: webhook → Gemini → response). |
+| **Cognee** | Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
+| **Hotdata** | Designed in (one forked instant database per investigator) behind the `Workspace` interface; not live because signup needed a credit card. |
+| **Snyk** | Dependency and code scanning of this repo. |
+
+## Limitations
+
+- Attribution, not causation. A SUPPORTED finding means the evidence is consistent and
+  large; it does not rule out an unobserved driver.
+- Only the planner runs on RocketRide; the investigators fan out locally in threads.
+- The drill-down path is chosen by a deterministic concentration rule rather than an LLM —
+  a deliberate choice for reproducibility.
+- Gemini's free tier allows 20 requests per model per day, which bounds live runs and
+  keeps Cognee off the live path.
+
+## Layout
+
+```
+causal_crew/     pipeline modules; config.py holds every threshold
+data/            demo data generator + verify_orders.py (checks the planted story holds)
+context/         ten dated changelog / incident notes
+pipelines/       RocketRide pipeline definitions
+scripts/         environment smoke test, Cognee ingest
+tests/           unit tests on deterministic fixtures (CI: .github/workflows/tests.yml)
+```
+
+## Setup details
+
+Copy `.env.example` to `.env` and fill in `ROCKETRIDE_APIKEY` and `LLM_API_KEY` (Gemini).
+`make check` smoke-tests every service.

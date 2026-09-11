@@ -1,3 +1,4 @@
+import random
 from datetime import date, timedelta
 
 import pandas as pd
@@ -11,7 +12,7 @@ END = date(2026, 9, 9)
 def make_orders(path, seasonal_decoy=False):
     """Deterministic orders. West new-customer orders fall 60% from STEP.
     With seasonal_decoy, East app orders dip 30% from Aug 25 every year."""
-    rows, oid, day = [], 0, START
+    rows, oid, day, rng = [], 0, START, random.Random(7)
     while day <= END:
         late_summer = (day.month == 8 and day.day >= 25) or day.month == 9
         for region in ("West", "East"):
@@ -25,7 +26,7 @@ def make_orders(path, seasonal_decoy=False):
                             n = 7
                         for _ in range(n):
                             oid += 1
-                            rows.append((f"O{oid}", day, region, cat, channel, ctype, 1, 100.0))
+                            rows.append((f"O{oid}", day, region, cat, channel, ctype, rng.randint(1, 4), 100.0))
         day += timedelta(days=1)
     pd.DataFrame(rows, columns=["order_id", "date", "region", "product_category",
                                 "channel", "customer_type", "units", "revenue"]).to_parquet(path)

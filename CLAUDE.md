@@ -60,7 +60,7 @@ Orchestration: stages run as a RocketRide pipeline; investigators fan out in par
 ### [1] Health check — deterministic, PASS/FAIL + evidence
 
 * Freshness: max(date) equals the expected latest date.
-* Row counts: each day in the current window within ±3 robust z-scores (median/MAD) of the trailing 28 days.
+* Row counts: flag a day in the current window only if it is beyond ±3 robust z-scores (median/MAD) of the trailing 28 days **and** more than 25% off the trailing median. (Robust z alone flags the planted, real West drop; see Decisions.)
 * Duplicates: zero duplicate `order_id`s; flag any day whose rows duplicate another day.
 * Null spikes: key-column null rate rises ≤ 5 percentage points vs baseline.
 * Scale break: median order value ratio (current/baseline) outside [0.2, 5] → possible unit change (cents vs dollars).
@@ -138,6 +138,21 @@ Demo script:
 6. 2:45–3:00 — Cognee context + write-back. Fallback: read the changelog markdown directly.
 7. 3:00–3:15 — FEATURE FREEZE. Record backup demo video, Snyk scan, README.
 8. 3:15–3:30 — Submit: GitHub link + all `.pipe` files in RocketRide Discord #showcase, plus any other form announced at the event.
+
+## Decisions made during the build (Sept 11)
+
+These resolve points the spec left open or that the data showed were wrong. All live in `causal_crew/config.py`.
+
+* Row counts use a 25% relative floor on top of robust z (`ROW_COUNT_MIN_REL_DEV`).
+* "A day whose rows duplicate another day" is a separate `duplicate_days` check: identical row content under a different date, whatever the order ids.
+* Seasonality compares percent changes, so year-over-year growth doesn't shrink last year's effect.
+* Consistency: within the finding's segment, split by each dimension not in it; pass if sub-segments holding ≥80% of baseline revenue move with the aggregate.
+* Bootstrap resamples days, not orders.
+* Checks pass but contribution < 30% → `INSUFFICIENT_EVIDENCE`. Overlap is measured on lost orders.
+* The drill-down path is chosen deterministically (narrow only into sub-segments whose share of the change is ≥1.25× their share of baseline revenue), not by the LLM, for reproducibility.
+* Investigators use one local DuckDB per lead behind `Workspace`; Hotdata signup required a credit card at the event. Hotdata `fork` per investigator is the drop-in upgrade.
+* RocketRide runs the planner's LLM stage (`pipelines/planner.pipe`, Gemini on the staging server). Investigators fan out locally in threads.
+* Memory: SUPPORTED findings go to `memory/findings.jsonl` and back into the planner prompt; Cognee write-back is opt-in (`--remember`) because Gemini's free tier (20 requests/model/day) can't sustain Cognee during a live demo.
 
 ## Working rules for Claude Code
 

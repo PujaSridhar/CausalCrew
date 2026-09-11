@@ -49,3 +49,16 @@ def test_null_spike_fails(orders, tmp_path):
         df.loc[mask, "region"] = None
         return df
     assert "null_spike" in run(_rewrite(orders, nulls, tmp_path, "nulls"))["failed"]
+
+
+def test_day_copied_under_new_ids_fails(orders, tmp_path):
+    def copy_day(df):
+        src, dst = date(2026, 7, 1), date(2026, 7, 2)
+        copy = df[df.date == src].copy()
+        copy["date"], copy["order_id"] = dst, [f"COPY{i}" for i in range(len(copy))]
+        return pd.concat([df[df.date != dst], copy])
+    r = run(_rewrite(orders, copy_day, tmp_path, "copied"))
+    by = {c["name"]: c for c in r["checks"]}
+    assert not by["duplicate_days"]["ok"]
+    assert by["duplicate_days"]["days"] == ["2026-07-01", "2026-07-02"]
+    assert by["duplicates"]["ok"]  # new ids, so the order_id check alone would miss it

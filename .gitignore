@@ -18,3 +18,6 @@ reports/
 
 # vendor agent skills (hotdata manage skills install --project)
 .agents/
+
+# findings memory written by runs
+memory/

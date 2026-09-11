@@ -8,7 +8,8 @@ import duckdb
 import numpy as np
 
 from causal_crew import config as C
-from causal_crew.investigator import _where, default_windows
+from causal_crew.investigator import default_windows
+from causal_crew.segments import segment_filter
 
 
 class _DB:
@@ -30,19 +31,19 @@ def _year_earlier(window):
 
 
 def _daily(db, seg, window):
-    where, params = _where(seg)
+    where, params = segment_filter(seg)
     return db.q(f"SELECT date, sum(revenue) AS rev, count(*) AS n FROM orders "
                 f"WHERE {where} AND date BETWEEN ? AND ? GROUP BY date", params + list(window))
 
 
 def _revenue(db, seg, window):
-    where, params = _where(seg)
+    where, params = segment_filter(seg)
     return float(db.q(f"SELECT coalesce(sum(revenue), 0) AS r FROM orders "
                       f"WHERE {where} AND date BETWEEN ? AND ?", params + list(window)).r[0])
 
 
 def _orders(db, seg, window):
-    where, params = _where(seg)
+    where, params = segment_filter(seg)
     return int(db.q(f"SELECT count(*) AS n FROM orders WHERE {where} AND date BETWEEN ? AND ?",
                     params + list(window)).n[0])
 
@@ -88,7 +89,7 @@ def seasonality_check(db, seg, windows):
 
 
 def consistency_check(db, seg, windows):
-    where, params = _where(seg)
+    where, params = segment_filter(seg)
     (b0, b1), (c0, c1) = windows["baseline"], windows["current"]
     agg = _revenue(db, seg, windows["current"]) - _revenue(db, seg, windows["baseline"])
     sign = np.sign(agg) or -1.0

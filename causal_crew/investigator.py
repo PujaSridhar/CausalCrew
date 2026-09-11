@@ -13,6 +13,7 @@ from datetime import date, timedelta
 import numpy as np
 
 from causal_crew import config as C
+from causal_crew.segments import segment_filter
 from causal_crew.workspace import Workspace
 
 
@@ -21,24 +22,13 @@ def default_windows():
             "current": tuple(date.fromisoformat(d) for d in C.DEMO_CURRENT_WINDOW)}
 
 
-def _where(segment):
-    """SQL filter for a segment. Dimension names are checked against config;
-    values are always bound as parameters."""
-    for dim in segment:
-        if dim not in C.DIMENSIONS:
-            raise ValueError(f"unknown dimension: {dim!r}")
-    if not segment:
-        return "TRUE", []
-    return " AND ".join(f"{dim} = ?" for dim in segment), list(segment.values())
-
-
 def _window_params(windows):
     (b0, b1), (c0, c1) = windows["baseline"], windows["current"]
     return [b0, b1, c0, c1]
 
 
 def _totals(ws, table, segment, windows):
-    where, params = _where(segment)
+    where, params = segment_filter(segment)
     b0, b1, c0, c1 = _window_params(windows)
     row = ws.sql(f"""
         SELECT coalesce(sum(CASE WHEN date BETWEEN ? AND ? THEN revenue END), 0) AS base_rev,
@@ -53,7 +43,7 @@ def _totals(ws, table, segment, windows):
 
 
 def _breakdown(ws, table, segment, dim, windows):
-    where, params = _where(segment)
+    where, params = segment_filter(segment)
     return ws.sql(f"""
         SELECT {dim} AS value,
                coalesce(sum(CASE WHEN date BETWEEN ? AND ? THEN revenue END), 0) AS base_rev,
@@ -94,7 +84,7 @@ def _drill(ws, table, segment, windows):
 
 
 def _change_point(ws, table, segment, windows):
-    where, params = _where(segment)
+    where, params = segment_filter(segment)
     end = windows["current"][1]
     start = end - timedelta(days=C.CHANGE_POINT_LOOKBACK_DAYS - 1)
     ws.sql("DROP TABLE IF EXISTS daily_series")
@@ -109,8 +99,8 @@ def _change_point(ws, table, segment, windows):
         return None, 0.0
     scores = [abs(v[k:].mean() - v[:k].mean()) * np.sqrt(k * (n - k) / n) for k in range(m, n - m)]
     k = m + int(np.argmax(scores))
-    return s.date.iloc[k].date() if hasattr(s.date.iloc[k], "date") else s.date.iloc[k], \
-        float(v[k:].mean() - v[:k].mean())
+    cp = s.date.iloc[k]
+    return (cp.date() if hasattr(cp, "date") else cp), float(v[k:].mean() - v[:k].mean())
 
 
 def _volume_rate(t):
@@ -162,7 +152,7 @@ def investigate(lead_id, segment, hypothesis="", windows=None,
                 orders_path=C.ORDERS_PATH, events=None, root=C.WORKSPACE_DIR):
     windows = windows or default_windows()
     events = load_context() if events is None else events
-    where, params = _where(segment)
+    where, params = segment_filter(segment)
 
     with Workspace(lead_id, orders_path=orders_path, root=root) as ws:
         total = _totals(ws, "orders", {}, windows)

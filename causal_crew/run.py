@@ -8,19 +8,21 @@ report. If the health check fails, the run stops and says why.
 """
 
 import argparse
+import asyncio
 import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 from causal_crew import config as C
-from causal_crew import health, investigator, planner
+from causal_crew import health, investigator, memory, planner
 from causal_crew import judge as judge_mod
 
 REPORT_DIR = os.path.join(os.path.dirname(C.WORKSPACE_DIR), "reports")
 
 
-def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPACE_DIR):
+def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPACE_DIR,
+        memory_path=memory.MEMORY_PATH, remember=False):
     t0 = time.time()
     report = {"question": C.DEMO_QUESTION, "data": os.path.basename(orders_path),
               "windows": {"baseline": list(C.DEMO_BASELINE_WINDOW), "current": list(C.DEMO_CURRENT_WINDOW)}}
@@ -30,7 +32,8 @@ def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPAC
         report["outcome"] = "STOPPED"
         return _finish(report, out_dir, t0)
 
-    report["plan"] = planner.plan(orders_path=orders_path, ask=ask)
+    report["plan"] = planner.plan(orders_path=orders_path, ask=ask,
+                                  memory_records=memory.recall(memory_path))
     leads = report["plan"]["leads"]
     with ThreadPoolExecutor(max_workers=len(leads)) as pool:
         findings = list(pool.map(
@@ -38,6 +41,15 @@ def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPAC
                                                   orders_path=orders_path, root=root), leads))
     report["investigations"] = findings
     report["judgement"] = judge_mod.judge(findings, orders_path=orders_path)
+    recorded = memory.write_back(report["judgement"]["findings"], report["question"],
+                                 report["windows"], memory_path)
+    report["memory"] = {"prior": report["plan"]["memory_considered"], "recorded": recorded, "cognee": None}
+    if remember and recorded:
+        try:
+            n = asyncio.run(memory.remember_in_cognee(recorded))
+            report["memory"]["cognee"] = f"stored {n} finding(s)"
+        except Exception as e:  # Cognee is an optional extra, never a reason to fail the run
+            report["memory"]["cognee"] = f"skipped: {type(e).__name__}: {str(e)[:150]}"
     report["outcome"] = "INVESTIGATED"
     return _finish(report, out_dir, t0)
 
@@ -117,6 +129,14 @@ def render_markdown(r):
         for name, c in f["checks"].items():
             out.append(f"  - {name}: {'PASS' if c['ok'] else 'FAIL'} — {c['evidence']}")
 
+    m = r["memory"]
+    out += ["", "## 4. Memory", "", f"- Prior verified findings the planner saw: {len(m['prior'])}"]
+    out += [f"  - {p}" for p in m["prior"]]
+    out.append(f"- Newly recorded for the next question: {len(m['recorded'])}")
+    out += [f"  - {memory.describe(rec)}" for rec in m["recorded"]]
+    if m["cognee"]:
+        out.append(f"- Cognee: {m['cognee']}")
+
     out += ["", "## Appendix: the SQL behind every number", ""]
     for inv in r["investigations"]:
         out += [f"<details><summary>{inv['lead_id']} ({len(inv['queries'])} queries, "
@@ -132,8 +152,9 @@ def render_markdown(r):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--broken", action="store_true", help="run on the broken copy (demo run A)")
+    ap.add_argument("--remember", action="store_true", help="also store verified findings in Cognee (slow)")
     args = ap.parse_args()
-    r = run(C.ORDERS_BROKEN_PATH if args.broken else C.ORDERS_PATH)
+    r = run(C.ORDERS_BROKEN_PATH if args.broken else C.ORDERS_PATH, remember=args.remember)
     print(f"health: {r['health']['status']}  outcome: {r['outcome']}  ({r['seconds']}s)")
     if r["outcome"] == "STOPPED":
         for c in r["health"]["checks"]:
@@ -143,6 +164,9 @@ def main():
         print(f"planner: {r['plan']['planner']}")
         for f in r["judgement"]["findings"]:
             print(f"  #{f['rank']} {f['lead_id']:24s} {_pct(f['contribution']):>6s}  {f['verdict']}")
+        m = r["memory"]
+        print(f"memory: {len(m['prior'])} prior finding(s) considered, {len(m['recorded'])} recorded"
+              + (f", cognee {m['cognee']}" if m["cognee"] else ""))
     print(f"report: {r['files']['markdown']}")
 
 

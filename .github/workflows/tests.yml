@@ -1,0 +1,18 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # Tests use synthetic fixtures and never call RocketRide, Gemini, or Cognee,
+      # so CI installs only the data stack.
+      - run: pip install duckdb==1.5.5 pandas==3.0.5 numpy==2.5.3 pyarrow==25.0.1 pytest==9.1.1 python-dotenv==1.2.3
+      - run: python -m pytest -q tests

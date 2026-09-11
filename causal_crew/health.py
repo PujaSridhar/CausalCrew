@@ -13,6 +13,9 @@ from causal_crew import config as C
 from causal_crew.investigator import default_windows
 
 
+CONTENT_COLS = ("region", "product_category", "channel", "customer_type", "units", "revenue")
+
+
 def _check(name, ok, evidence, days=(), sql=None):
     return {"name": name, "ok": bool(ok), "evidence": evidence, "days": list(days), "sql": sql}
 
@@ -61,6 +64,19 @@ def run(orders_path=C.ORDERS_PATH, windows=None, expected_latest=C.DEMO_EXPECTED
         checks.append(_check("duplicates", n_dup == 0,
                              f"{n_dup:,} duplicate order_ids" + (f" on {', '.join(days)}" if days else ""),
                              days, sql=q))
+
+        # duplicate days: one day's rows repeated under another date (new order ids)
+        cols = ", ".join(f"CAST({c} AS VARCHAR)" for c in CONTENT_COLS)
+        order = ", ".join(CONTENT_COLS)
+        q = (f"SELECT date, md5(string_agg(concat_ws('|', {cols}), ',' ORDER BY {order})) AS fp "
+             "FROM orders GROUP BY date")
+        fps = con.execute(q).df()
+        fps["date"] = fps.date.dt.date
+        groups = [sorted(g) for g in fps.groupby("fp").date.apply(list) if len(g) > 1]
+        copied = sorted({d.isoformat() for g in groups for d in g})
+        ev = ("; ".join(" = ".join(d.isoformat() for d in g) for g in groups) + " have identical rows"
+              if groups else "no day repeats another day's rows")
+        checks.append(_check("duplicate_days", not groups, ev, copied, sql=q))
 
         # null spikes on key columns
         cols = ", ".join(f"avg(CASE WHEN {c} IS NULL THEN 1.0 ELSE 0 END) AS {c}" for c in C.KEY_COLUMNS)

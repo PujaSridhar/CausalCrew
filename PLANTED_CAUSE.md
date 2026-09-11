@@ -75,20 +75,17 @@ An 8-seed sweep all passed `verify_orders.py`:
 
 Seed 77 was picked because its headline is closest to "revenue dropped ~15%".
 
-## Spec interpretations baked into `causal_crew/config.py`
+## Decisions baked into `causal_crew/config.py`
 
-These are choices the spec in CLAUDE.md leaves open or gets wrong on this data.
-They need sign-off before the real health check and judge are written.
+Points the spec left open, or that this data showed needed changing. They are recorded
+in CLAUDE.md under "Decisions made during the build".
 
-1. **Row counts need a relative floor.** Robust z alone flags the clean run
-   (\|z\| = 6.2 on a real −16% day). A day is flagged only when \|z\| > 3
-   **and** it is more than 25% off the trailing median (`ROW_COUNT_MIN_REL_DEV`).
-2. **Seasonality compares percent changes**, not dollars, so 8% annual growth
-   doesn't make last year's dip look smaller.
-3. **Consistency:** within the finding's segment, split by every dimension not
-   used to define it; pass if sub-segments holding ≥ 80% of baseline revenue
-   move in the same direction as the aggregate.
-4. **Bootstrap resamples days**, not orders. Resampling a fixed number of
-   orders can't see volume changes, which is most of what moves revenue.
+1. **Row counts use a relative floor.** Robust z alone flags the clean run
+   (\|z\| = 6.2 on a real −16% day). A day is flagged only when \|z\| > 3 **and** it
+   is more than 25% off the trailing median.
+2. **Seasonality compares percent changes**, not dollars.
+3. **Consistency:** within the finding's segment, split by every dimension not used to
+   define it; pass if sub-segments holding ≥ 80% of baseline revenue move with the aggregate.
+4. **The bootstrap resamples days**, not orders.
 5. **Checks pass but contribution < 30%** → `INSUFFICIENT_EVIDENCE`.
-6. **Overlap is measured on lost orders**, per "explain largely the same orders".
+6. **Overlap is measured on lost orders.**

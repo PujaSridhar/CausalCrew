@@ -48,7 +48,7 @@ async def check_rocketride():
 def check_hotdata():
     gap = missing("HOTDATA_API_KEY", "HOTDATA_WORKSPACE")
     if gap:
-        return report("Hotdata", "SKIP", f"set {', '.join(gap)} in .env")
+        return report("Hotdata", "SKIP", "optional: investigators run on local DuckDB")
     import hotdata
     try:
         config = hotdata.Configuration(api_key=os.environ["HOTDATA_API_KEY"],

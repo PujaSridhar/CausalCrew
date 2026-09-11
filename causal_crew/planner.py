@@ -18,6 +18,7 @@ import duckdb
 from dotenv import load_dotenv
 
 from causal_crew import config as C
+from causal_crew import memory
 from causal_crew.investigator import default_windows, load_context
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -56,9 +57,10 @@ def context_near(events, windows):
     return [e for e in events if lo <= e["date"] <= hi]
 
 
-def _prompt(question, values, data_leads, events):
+def _prompt(question, values, data_leads, events, prior=()):
     notes = "\n\n".join(f"[{e['file']}] {e['date']} — {e['title']}\n{e['text'][:700]}" for e in events)
     taken = [lead["segment"] for lead in data_leads]
+    remembered = "\n".join(f"- {p}" for p in prior) or "- none yet"
     return f"""You are planning an investigation into a business metric change.
 
 Question: {question}
@@ -67,6 +69,9 @@ Dimensions and their allowed values:
 {json.dumps(values, indent=2)}
 
 Leads already chosen from the data (do not repeat these): {json.dumps(taken)}
+
+Previously verified findings from memory (inform your leads; don't just repeat them):
+{remembered}
 
 Company context notes near the change:
 {notes}
@@ -161,9 +166,11 @@ def keyword_leads(events, values, taken):
     return validate(cands, values, taken, {e["file"] for e in events})
 
 
-def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, events=None, ask=None):
+def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, events=None, ask=None,
+         memory_records=None):
     windows = windows or default_windows()
     ask = ask or default_llm()
+    prior = [memory.describe(r) for r in (memory.recall() if memory_records is None else memory_records)][-5:]
     events = context_near(load_context() if events is None else events, windows)
     data_leads, values, total = data_driven_leads(orders_path, windows)
     taken = [lead["segment"] for lead in data_leads]
@@ -171,7 +178,7 @@ def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, even
 
     error = None
     try:
-        parsed = _parse_json(ask(_prompt(question, values, data_leads, events)))
+        parsed = _parse_json(ask(_prompt(question, values, data_leads, events, prior)))
         extra = validate(parsed.get("leads", []), values, taken, {e["file"] for e in events})
         planner = getattr(ask, "engine", None) or "gemini"
     except Exception as e:  # any LLM failure falls back to the deterministic path
@@ -182,5 +189,5 @@ def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, even
         extra = keyword_leads(events, values, taken)
 
     return {"question": question, "total_delta": round(total, 2), "planner": planner, "error": error,
-            "context_considered": [e["file"] for e in events],
+            "context_considered": [e["file"] for e in events], "memory_considered": prior,
             "leads": data_leads + extra[:room]}
