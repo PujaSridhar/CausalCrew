@@ -38,11 +38,12 @@ flowchart TD
 | Stage | Module | What it does |
 |---|---|---|
 | 1. Health check | `causal_crew/health.py` | Freshness, row counts (robust z + relative floor), duplicate order ids, days copied under new ids, null spikes, unit/scale breaks. Any failure stops the run. |
-| 2-3. Planner | `causal_crew/planner.py`, `rocketride_llm.py` | The largest single-dimension deltas always become leads (SQL). Gemini, run as a RocketRide pipeline, adds up to two leads grounded in nearby changelog notes and prior findings. |
-| 4. Investigators | `causal_crew/investigator.py`, `workspace.py` | One per lead, in parallel, each in its own database: size the lead, drill down two levels, find the change point, split volume from order value, match context. Every query is logged. |
+| 2-3. Planner | `causal_crew/planner.py` | The largest single-dimension deltas always become leads (SQL). Changelog notes whose title names a segment always become leads too. Gemini, run as a RocketRide pipeline, fills the remaining slots using nearby notes and prior findings. |
+| 4. Investigators | `causal_crew/investigator.py`, `workspace.py` | One per lead, in parallel, each in its own database: size the lead, drill down two levels, find the change point, split volume from order value, match context. At each level the investigator's own RocketRide pipeline task chooses the path among sub-segments that pass a statistical threshold. Every query is logged. |
 | 5. Judge | `causal_crew/judge.py` | Deterministic evidence checks, overlap merge, ranking, verdicts. The LLM never writes a verdict. |
 | 6. Report | `causal_crew/run.py` | Markdown + JSON, with the SQL behind every number. |
 | 7. Memory | `causal_crew/memory.py` | Supported findings are appended to `memory/findings.jsonl` and fed to the planner next run; optionally pushed to Cognee (`--remember`). |
+| LLM layer | `causal_crew/llm.py`, `rocketride_llm.py` | RocketRide first, Gemini direct as backup, per agent. Each call is its own RocketRide task with a unique project id. |
 
 Every threshold lives in [`causal_crew/config.py`](causal_crew/config.py).
 
@@ -56,7 +57,7 @@ ending two days earlier) dips email orders in every region — and did the same 
 ```bash
 make setup     # venv + dependencies
 make data      # generate 637k orders (+ a broken copy) and verify the planted story
-make test      # 41 unit tests, no network
+make test      # unit tests + lint, no network
 make demo-a    # Run A: broken data
 make demo-b    # Run B: clean data
 ```
@@ -91,9 +92,13 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 - **The health gate must not flag real business moves.** Robust z alone flags the real
   West drop (|z| = 6.2 on a −16% day). A day is flagged only when it is both statistically
   unusual *and* more than 25% off the trailing median — a doubled or missing day always is.
-- **Drill down by concentration, not size.** An investigator narrows into a sub-segment
-  only if its share of the change is ≥1.25× its share of baseline revenue. Otherwise it
-  would always descend into the biggest bucket and report noise as a finding.
+- **The LLM proposes the path; statistics dispose.** A sub-segment qualifies for a
+  drill-down only if its share of the change is ≥1.25× its share of baseline revenue
+  (otherwise the investigator would always descend into the biggest bucket). The
+  investigator's LLM chooses among qualifying sub-segments and explains why; an
+  unsupported choice is overridden by the rule, an outage falls back to it, and a
+  rationale that cites a number not in the evidence is withheld. The report records
+  who decided each level.
 - **Statistics that fit revenue.** The bootstrap resamples days, not orders (resampling a
   fixed number of orders can't see volume changes). Seasonality compares percent changes,
   so year-over-year growth doesn't shrink last year's effect. Consistency requires
@@ -118,7 +123,7 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 
 | Tool | Role here |
 |---|---|
-| **RocketRide** | Runs the planner's LLM stage as a pipeline on the staging server (`pipelines/planner.pipe`: webhook → Gemini → response). |
+| **RocketRide** | Runs every agent's LLM step on the staging server: the planner (`pipelines/planner.pipe`) and each investigator's path decisions (`pipelines/investigator.pipe`), each as its own task. RocketRide allows one running task per project, so every run gets a unique project id. |
 | **Cognee** | Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
 | **Hotdata** | Designed in (one forked instant database per investigator) behind the `Workspace` interface; not live because signup needed a credit card. |
 | **Snyk** | Dependency and code scanning of this repo. |
@@ -127,9 +132,10 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 
 - Attribution, not causation. A SUPPORTED finding means the evidence is consistent and
   large; it does not rule out an unobserved driver.
-- Only the planner runs on RocketRide; the investigators fan out locally in threads.
-- The drill-down path is chosen by a deterministic concentration rule rather than an LLM —
-  a deliberate choice for reproducibility.
+- Investigators' SQL runs locally in isolated DuckDB workspaces; only their LLM steps run
+  on RocketRide.
+- LLM path choices are limited to sub-segments that pass the concentration threshold,
+  by design: the LLM can't steer an investigation down a statistically unsupported path.
 - Gemini's free tier allows 20 requests per model per day, which bounds live runs and
   keeps Cognee off the live path.
 

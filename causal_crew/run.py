@@ -22,7 +22,7 @@ REPORT_DIR = os.path.join(os.path.dirname(C.WORKSPACE_DIR), "reports")
 
 
 def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPACE_DIR,
-        memory_path=memory.MEMORY_PATH, remember=False):
+        memory_path=memory.MEMORY_PATH, remember=False, decide=None):
     t0 = time.time()
     report = {"question": C.DEMO_QUESTION, "data": os.path.basename(orders_path),
               "windows": {"baseline": list(C.DEMO_BASELINE_WINDOW), "current": list(C.DEMO_CURRENT_WINDOW)}}
@@ -35,10 +35,11 @@ def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPAC
     report["plan"] = planner.plan(orders_path=orders_path, ask=ask,
                                   memory_records=memory.recall(memory_path))
     leads = report["plan"]["leads"]
+    decide = decide or investigator.llm_decider
     with ThreadPoolExecutor(max_workers=len(leads)) as pool:
         findings = list(pool.map(
             lambda lead: investigator.investigate(lead["lead_id"], lead["segment"], lead["hypothesis"],
-                                                  orders_path=orders_path, root=root), leads))
+                                                  orders_path=orders_path, root=root, decide=decide), leads))
     report["investigations"] = findings
     report["judgement"] = judge_mod.judge(findings, orders_path=orders_path)
     recorded = memory.write_back(report["judgement"]["findings"], report["question"],
@@ -103,7 +104,8 @@ def render_markdown(r):
     out += ["", "## 3. Findings, ranked by the judge", "",
             "| # | lead | segment | share of change | verdict |", "|---|---|---|---|---|"]
     for f in r["judgement"]["findings"]:
-        out.append(f"| {f['rank']} | {f['lead_id']} | `{_cell(f['segment'])}` | {_pct(f['contribution'])} | {_cell(f['verdict'])} |")
+        out.append(f"| {f['rank']} | {f['lead_id']} | `{_cell(f['segment'])}` | "
+                   f"{_pct(f['contribution'])} | {_cell(f['verdict'])} |")
 
     for f in r["judgement"]["findings"]:
         out += ["", f"### #{f['rank']} {f['lead_id']} — {f['verdict']}", ""]
@@ -114,9 +116,11 @@ def render_markdown(r):
         vr = f["volume_rate"] or {}
         out += [f"- **Accounts for** {_pct(f['contribution'])} of the total change "
                 f"(starting lead: {_pct(f['lead_contribution'])})",
-                f"- **Drill-down:** " + " → ".join(
+                "- **Drill-down:** " + " → ".join(
                     [str(f["start_segment"])] + [f"{lvl['chosen']['dimension']}={lvl['chosen']['value']}"
                                                   for lvl in f["drill_path"] if lvl["chosen"]]),
+                *[f"  - level {lvl['level']}: {lvl['decided_by']} — {lvl['reason']}"
+                  for lvl in f["drill_path"]],
                 f"- **Change point:** {f['change_point']}",
                 f"- **Volume vs rate:** orders {vr.get('orders_base', '—'):,} → {vr.get('orders_current', '—'):,}, "
                 f"average order ${vr.get('aov_base', 0):,.2f} → ${vr.get('aov_current', 0):,.2f}; "
@@ -162,6 +166,8 @@ def main():
                 print(f"  FAIL {c['name']}: {c['evidence']}")
     else:
         print(f"planner: {r['plan']['planner']}")
+        engines = [lvl["decided_by"] for inv in r["investigations"] for lvl in inv["drill_path"]]
+        print("investigator decisions: " + ", ".join(f"{e} x{engines.count(e)}" for e in sorted(set(engines))))
         for f in r["judgement"]["findings"]:
             print(f"  #{f['rank']} {f['lead_id']:24s} {_pct(f['contribution']):>6s}  {f['verdict']}")
         m = r["memory"]

@@ -12,7 +12,6 @@ import numpy as np
 from causal_crew import config as C
 from causal_crew.investigator import default_windows
 
-
 CONTENT_COLS = ("region", "product_category", "channel", "customer_type", "units", "revenue")
 
 
@@ -44,7 +43,7 @@ def run(orders_path=C.ORDERS_PATH, windows=None, expected_latest=C.DEMO_EXPECTED
         med = float(np.median(trailing))
         mad = float(np.median(np.abs(trailing - med))) * 1.4826
         flagged, worst = [], (None, 0.0, 0.0)
-        for d, n in zip(current.date.dt.date, current.n.to_numpy(float)):
+        for d, n in zip(current.date.dt.date, current.n.to_numpy(float), strict=True):
             rel = n / med - 1
             z = (n - med) / mad if mad else (0.0 if n == med else float("inf"))
             if abs(rel) > abs(worst[1]):

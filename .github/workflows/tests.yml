@@ -14,5 +14,6 @@ jobs:
           python-version: "3.13"
       # Tests use synthetic fixtures and never call RocketRide, Gemini, or Cognee,
       # so CI installs only the data stack.
-      - run: pip install duckdb==1.5.5 pandas==3.0.5 numpy==2.5.3 pyarrow==25.0.1 pytest==9.1.1 python-dotenv==1.2.3
+      - run: pip install duckdb==1.5.5 pandas==3.0.5 numpy==2.5.3 pyarrow==25.0.1 pytest==9.1.1 python-dotenv==1.2.3 ruff==0.16.7
+      - run: ruff check .
       - run: python -m pytest -q tests

@@ -1,11 +1,13 @@
 """Investigator: one lead, one workspace, the spec's five steps.
 
-Every number comes from SQL run in the lead's own workspace. Python only does
-arithmetic on query results (the change-point split and the volume/rate
-decomposition). No LLM here yet: the drill-down path follows the data.
+Every number comes from SQL run in the lead's own workspace; Python only does
+arithmetic on query results. At each drill-down level the LLM (via RocketRide)
+chooses among sub-segments that pass a statistical threshold, and a
+deterministic rule is the guardrail and the fallback.
 """
 
 import glob
+import json
 import os
 import re
 from datetime import date, timedelta
@@ -13,6 +15,7 @@ from datetime import date, timedelta
 import numpy as np
 
 from causal_crew import config as C
+from causal_crew.llm import investigator_llm, parse_json
 from causal_crew.segments import segment_filter
 from causal_crew.workspace import Workspace
 
@@ -51,8 +54,85 @@ def _breakdown(ws, table, segment, dim, windows):
         FROM {table} WHERE {where} GROUP BY {dim}""", _window_params(windows) + params)
 
 
-def _drill(ws, table, segment, windows):
-    """Descend while one sub-segment carries a disproportionate share of the delta."""
+def _qualifying(candidates):
+    return [c for c in candidates if c["concentration"] >= C.DRILL_MIN_CONCENTRATION]
+
+
+def rule_decider(lead_id, hypothesis, segment, level, candidates):
+    """Deterministic: narrow into the most concentrated qualifying sub-segment."""
+    q = _qualifying(candidates)
+    if not q:
+        return {"dimension": None, "value": None, "decided_by": "rule",
+                "reason": "no sub-segment carries a disproportionate share of the change"}
+    best = max(q, key=lambda c: c["concentration"])
+    return {"dimension": best["dimension"], "value": best["top_value"], "decided_by": "rule",
+            "reason": "the most concentrated sub-segment above the threshold"}
+
+
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _decision_prompt(lead_id, hypothesis, segment, level, candidates):
+    rows = "\n".join(
+        f"- {c['dimension']} = {c['top_value']}: {c['delta_share']:.0%} of the change, "
+        f"{c['base_share']:.0%} of baseline revenue, concentration {c['concentration']:.2f}"
+        + (" (qualifies)" if c["concentration"] >= C.DRILL_MIN_CONCENTRATION else "")
+        for c in candidates)
+    return f"""You are an investigator agent drilling into one lead of a revenue change.
+
+Lead: {lead_id}: {hypothesis}
+Current segment: {json.dumps(segment)} (drill-down level {level})
+
+For each remaining dimension, the sub-segment with the largest change (computed in SQL):
+{rows}
+
+A sub-segment qualifies when its concentration is at least {C.DRILL_MIN_CONCENTRATION}: it carries
+more of the change than its share of revenue. Choose the qualifying dimension that best
+narrows this lead, or null if none qualifies. Give a one-sentence reason in plain words.
+Use only numbers shown above.
+
+Return JSON only: {{"dimension": "<dimension or null>", "reason": "<one sentence>"}}"""
+
+
+def llm_decider(lead_id, hypothesis, segment, level, candidates, ask=None):
+    """The LLM chooses the path among statistically qualifying sub-segments.
+
+    The rule stays the guardrail: an unsupported choice is overridden, an
+    unavailable LLM falls back to the rule, and a rationale citing a number
+    that isn't in the evidence is withheld. Level 1 always asks, so every
+    investigator runs through RocketRide; deeper levels ask only when there is
+    something to choose.
+    """
+    rule = rule_decider(lead_id, hypothesis, segment, level, candidates)
+    qualifying = {c["dimension"]: c for c in _qualifying(candidates)}
+    if level > 1 and not qualifying:
+        return rule
+    prompt = _decision_prompt(lead_id, hypothesis, segment, level, candidates)
+    ask = ask or investigator_llm(lead_id)
+    try:
+        reply = parse_json(ask(prompt))
+    except Exception as e:
+        return {**rule, "reason": f"{rule['reason']} (LLM unavailable: {type(e).__name__})",
+                "engine_errors": list(getattr(ask, "errors", []) or [str(e)[:200]])}
+    engine = getattr(ask, "engine", None) or "llm"
+    errors = list(getattr(ask, "errors", []) or [])  # engines that failed before this one answered
+    dim = reply.get("dimension")
+    dim = None if dim in (None, "", "null", "none") else str(dim)
+    reason = str(reply.get("reason", "")).strip()[:240]
+    if not set(_NUMBER.findall(reason)) <= set(_NUMBER.findall(prompt)):
+        reason = "(rationale withheld: it cited a number not in the evidence)"
+    if dim is None and not qualifying:
+        return {"dimension": None, "value": None, "decided_by": engine, "reason": reason,
+                "engine_errors": errors}
+    if dim in qualifying:
+        return {"dimension": dim, "value": qualifying[dim]["top_value"], "decided_by": engine,
+                "reason": reason, "engine_errors": errors}
+    return {**rule, "decided_by": f"rule (overrode {engine})", "engine_errors": errors,
+            "reason": f"{engine} chose {dim!r}, which the evidence doesn't support; took {rule['reason']}"}
+
+
+def _drill(ws, table, segment, windows, decide, lead_id, hypothesis):
+    """Descend while a sub-segment carries a disproportionate share of the delta."""
     seg, path = dict(segment), []
     for level in range(1, C.MIN_DRILL_DEPTH + 1):
         remaining = [d for d in C.DIMENSIONS if d not in seg]
@@ -60,26 +140,24 @@ def _drill(ws, table, segment, windows):
             break
         parent = _totals(ws, table, seg, windows)
         sign = np.sign(parent["delta"]) or -1.0
-        examined, best = {}, None
+        candidates = []
         for dim in remaining:
             df = _breakdown(ws, table, seg, dim, windows)
             df["delta"] = df.cur_rev - df.base_rev
             top = df.loc[(df.delta * sign).idxmax()]
             delta_share = float(top.delta / parent["delta"]) if parent["delta"] else 0.0
             base_share = float(top.base_rev / parent["base_rev"]) if parent["base_rev"] else 0.0
-            conc = delta_share / base_share if base_share else 0.0
-            examined[dim] = {"top_value": str(top.value), "delta_share": round(delta_share, 4),
-                             "base_share": round(base_share, 4), "concentration": round(conc, 3)}
-            if best is None or conc > best["concentration"]:
-                best = {"dimension": dim, "value": str(top.value), "concentration": round(conc, 3),
-                        "delta_share": round(delta_share, 4)}
-        narrowed = best["concentration"] >= C.DRILL_MIN_CONCENTRATION
-        path.append({"level": level, "segment": dict(seg), "examined": examined,
-                     "chosen": best if narrowed else None,
-                     "note": None if narrowed else "effect is spread evenly; no sub-segment stands out"})
-        if not narrowed:
+            candidates.append({"dimension": dim, "top_value": str(top.value),
+                               "delta_share": round(delta_share, 4), "base_share": round(base_share, 4),
+                               "concentration": round(delta_share / base_share if base_share else 0.0, 3)})
+        d = decide(lead_id, hypothesis, dict(seg), level, candidates)
+        path.append({"level": level, "segment": dict(seg), "candidates": candidates,
+                     "chosen": {"dimension": d["dimension"], "value": d["value"]} if d["dimension"] else None,
+                     "decided_by": d["decided_by"], "reason": d["reason"],
+                     "engine_errors": d.get("engine_errors", [])})
+        if not d["dimension"]:
             break
-        seg[best["dimension"]] = best["value"]
+        seg[d["dimension"]] = d["value"]
     return seg, path
 
 
@@ -120,7 +198,8 @@ def load_context(context_dir=C.CONTEXT_DIR):
     """Changelog fallback: read dated markdown notes directly (spec step 6 fallback)."""
     events = []
     for path in sorted(glob.glob(os.path.join(context_dir, "*.md"))):
-        text = open(path).read()
+        with open(path) as f:
+            text = f.read()
         d = re.search(r"^Date:\s*(\d{4}-\d{2}-\d{2})", text, re.M)
         t = re.search(r"^#\s+(.+)$", text, re.M)
         if d:
@@ -149,7 +228,7 @@ def match_context(events, change_point, segment):
 
 
 def investigate(lead_id, segment, hypothesis="", windows=None,
-                orders_path=C.ORDERS_PATH, events=None, root=C.WORKSPACE_DIR):
+                orders_path=C.ORDERS_PATH, events=None, root=C.WORKSPACE_DIR, decide=rule_decider):
     windows = windows or default_windows()
     events = load_context() if events is None else events
     where, params = segment_filter(segment)
@@ -161,7 +240,7 @@ def investigate(lead_id, segment, hypothesis="", windows=None,
         # 1. size the lead
         lead = _totals(ws, "lead_orders", {}, windows)
         # 2. drill down
-        final_seg, path = _drill(ws, "lead_orders", segment, windows)
+        final_seg, path = _drill(ws, "lead_orders", segment, windows, decide, lead_id, hypothesis)
         final = _totals(ws, "lead_orders", {k: v for k, v in final_seg.items() if k not in segment}, windows)
         # 3. change point
         cp, shift = _change_point(ws, "lead_orders", {k: v for k, v in final_seg.items() if k not in segment}, windows)

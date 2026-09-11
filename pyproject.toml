@@ -1,0 +1,17 @@
+[project]
+name = "causal-crew"
+version = "0.1.0"
+description = "Is the number real? If yes, every lead gets its own investigator, and the evidence decides."
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+# SQL parameter lists read more clearly as concatenation than as unpacking.
+ignore = ["RUF005"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

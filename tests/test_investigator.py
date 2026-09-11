@@ -1,11 +1,9 @@
 from datetime import date
 
 import pytest
-
 from conftest import STEP
 
 from causal_crew.investigator import investigate, match_context
-
 
 EVENTS = [
     {"date": date(2026, 8, 25), "title": "Email campaign ends", "file": "a.md",
@@ -64,3 +62,53 @@ def test_rejects_unknown_dimension(orders, tmp_path):
     with pytest.raises(ValueError):
         investigate("bad", {"region; DROP TABLE orders": "x"}, orders_path=orders,
                     events=EVENTS, root=str(tmp_path / "ws"))
+
+
+# --- LLM path decisions (stubbed; no network) --------------------------------
+
+from causal_crew.investigator import llm_decider  # noqa: E402
+
+CANDS = [{"dimension": "customer_type", "top_value": "new", "delta_share": 0.78, "base_share": 0.46,
+          "concentration": 1.69},
+         {"dimension": "channel", "top_value": "web", "delta_share": 0.51, "base_share": 0.52,
+          "concentration": 0.99}]
+
+
+def _stub(reply):
+    def ask(_prompt):
+        return reply
+    ask.engine = "rocketride"
+    return ask
+
+
+def test_llm_choice_among_qualifying_is_used():
+    d = llm_decider("w", "h", {"region": "West"}, 1, CANDS,
+                    ask=_stub('{"dimension": "customer_type", "reason": "new customers carry 78% of the change"}'))
+    assert (d["dimension"], d["value"], d["decided_by"]) == ("customer_type", "new", "rocketride")
+    assert "78%" in d["reason"]
+
+
+def test_unsupported_llm_choice_is_overridden_by_rule():
+    d = llm_decider("w", "h", {"region": "West"}, 1, CANDS, ask=_stub('{"dimension": "channel", "reason": "x"}'))
+    assert d["dimension"] == "customer_type" and d["decided_by"] == "rule (overrode rocketride)"
+
+
+def test_llm_outage_falls_back_to_rule():
+    def down(_):
+        raise TimeoutError
+    d = llm_decider("w", "h", {"region": "West"}, 1, CANDS, ask=down)
+    assert d["dimension"] == "customer_type" and "LLM unavailable" in d["reason"]
+
+
+def test_rationale_with_invented_number_is_withheld():
+    d = llm_decider("w", "h", {"region": "West"}, 1, CANDS,
+                    ask=_stub('{"dimension": "customer_type", "reason": "a 93% collapse"}'))
+    assert d["dimension"] == "customer_type" and "withheld" in d["reason"]
+
+
+def test_deeper_level_with_nothing_to_choose_skips_the_llm():
+    def must_not_call(_):
+        raise AssertionError("LLM called")
+    flat = [dict(CANDS[1])]
+    d = llm_decider("w", "h", {"region": "West", "customer_type": "new"}, 2, flat, ask=must_not_call)
+    assert d["dimension"] is None and d["decided_by"] == "rule"

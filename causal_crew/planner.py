@@ -2,26 +2,23 @@
 
 Data-driven leads come straight from SQL (the largest single-dimension
 deltas), so the context can't decide which leads exist. Gemini, run as a
-RocketRide pipeline (direct Gemini as a backup), adds
-context-driven leads and writes their hypotheses; it never produces numbers.
-If Gemini fails, a keyword match between context notes and data values stands
-in, so the demo path never depends on the LLM being up.
+RocketRide pipeline with direct Gemini as backup, adds context-driven leads
+and writes their hypotheses; it never produces numbers. If no LLM answers, a
+keyword match on changelog titles stands in, so the demo never depends on one.
+Notes whose title names a segment always become leads, so a relevant note
+(the email campaign ending, say) can't be dropped by the LLM's choices.
 """
 
 import json
-import os
 import re
-import urllib.request
 from datetime import timedelta
 
 import duckdb
-from dotenv import load_dotenv
 
 from causal_crew import config as C
 from causal_crew import memory
 from causal_crew.investigator import default_windows, load_context
-
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+from causal_crew.llm import parse_json, planner_llm
 
 
 def lead_id(segment):
@@ -57,6 +54,11 @@ def context_near(events, windows):
     return [e for e in events if lo <= e["date"] <= hi]
 
 
+# The reply shape the planner asks for (single braces: this is not an f-string).
+_LEADS_SHAPE = ('{"leads": [{"segment": {"<dimension>": "<value>"}, '
+                '"hypothesis": "<one sentence>", "event_file": "<file name>"}]}')
+
+
 def _prompt(question, values, data_leads, events, prior=()):
     notes = "\n\n".join(f"[{e['file']}] {e['date']} — {e['title']}\n{e['text'][:700]}" for e in events)
     taken = [lead["segment"] for lead in data_leads]
@@ -83,51 +85,7 @@ hypothesis as a possibility to test ("may", "could", "lines up with"), never
 as a conclusion.
 
 Return JSON only, in this shape:
-{{"leads": [{{"segment": {{"<dimension>": "<value>"}}, "hypothesis": "<one sentence>", "event_file": "<file name>"}}]}}"""
-
-
-def ask_gemini(prompt):
-    load_dotenv(C.ENV_PATH)
-    key = os.environ.get("LLM_API_KEY", "").strip()
-    model = (os.environ.get("PLANNER_MODEL") or C.PLANNER_MODEL).split("/", 1)[-1]
-    if not key:
-        raise RuntimeError("LLM_API_KEY is not set")
-    body = {"contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json", "temperature": 0}}
-    req = urllib.request.Request(GEMINI_URL.format(model=model), data=json.dumps(body).encode(),
-                                 headers={"x-goog-api-key": key, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=C.GEMINI_TIMEOUT_S) as r:
-        data = json.load(r)
-    return data["candidates"][0]["content"]["parts"][0]["text"]
-
-
-class LLMChain:
-    """Try each engine in order; remember which one answered."""
-
-    def __init__(self, *engines):
-        self.engines, self.engine, self.errors = engines, None, []
-
-    def __call__(self, prompt):
-        self.errors = []
-        for name, fn in self.engines:
-            try:
-                text = fn(prompt)
-                self.engine = name
-                return text
-            except Exception as e:
-                self.errors.append(f"{name}: {type(e).__name__}: {str(e)[:150]}")
-        raise RuntimeError("; ".join(self.errors))
-
-
-def default_llm():
-    from causal_crew.rocketride_llm import ask_rocketride
-    return LLMChain(("rocketride", ask_rocketride), ("gemini", ask_gemini))
-
-
-def _parse_json(text):
-    """Pull the JSON object out of a reply, tolerating ```json fences."""
-    m = re.search(r"\{.*\}", text.strip(), re.S)
-    return json.loads(m.group(0) if m else text)
+{_LEADS_SHAPE}"""
 
 
 def validate(candidates, values, taken, event_files):
@@ -157,36 +115,37 @@ def keyword_leads(events, values, taken):
     say it is unchanged)."""
     cands = []
     for e in events:
-        text = e["title"].lower()
+        title = e["title"].lower()
         for dim, vals in values.items():
             for v in vals:
-                if re.search(rf"\b{re.escape(v.lower())}\b", text):
+                if re.search(rf"\b{re.escape(v.lower())}\b", title):
                     cands.append({"segment": {dim: v}, "event_file": e["file"],
-                                  "hypothesis": f"{e['title']} ({e['date']}) mentions {dim} = {v}."})
+                                  "hypothesis": f"'{e['title']}' ({e['date']}) names {dim} = {v}; "
+                                                "the change may line up with it."})
     return validate(cands, values, taken, {e["file"] for e in events})
 
 
 def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, events=None, ask=None,
          memory_records=None):
     windows = windows or default_windows()
-    ask = ask or default_llm()
-    prior = [memory.describe(r) for r in (memory.recall() if memory_records is None else memory_records)][-5:]
+    ask = ask or planner_llm()
+    records = memory.recall() if memory_records is None else memory_records
+    prior = [memory.describe(r) for r in records][-5:]
     events = context_near(load_context() if events is None else events, windows)
     data_leads, values, total = data_driven_leads(orders_path, windows)
     taken = [lead["segment"] for lead in data_leads]
     room = C.PLANNER_MAX_LEADS - len(data_leads)
 
+    files = {e["file"] for e in events}
     error = None
     try:
-        parsed = _parse_json(ask(_prompt(question, values, data_leads, events, prior)))
-        extra = validate(parsed.get("leads", []), values, taken, {e["file"] for e in events})
-        planner = getattr(ask, "engine", None) or "gemini"
+        parsed = parse_json(ask(_prompt(question, values, data_leads, events, prior)))
+        llm_leads = validate(parsed.get("leads", []), values, taken, files)
+        planner = getattr(ask, "engine", None) or "llm"
     except Exception as e:  # any LLM failure falls back to the deterministic path
-        planner, error = "fallback", f"{type(e).__name__}: {str(e)[:200]}"
-        extra = keyword_leads(events, values, taken)
-    if planner != "fallback" and not extra:
-        planner += "+fallback"
-        extra = keyword_leads(events, values, taken)
+        planner, error, llm_leads = "fallback", f"{type(e).__name__}: {str(e)[:200]}", []
+    title_leads = keyword_leads(events, values, taken)
+    extra = validate(title_leads + llm_leads, values, taken, files)  # dedupe across both
 
     return {"question": question, "total_delta": round(total, 2), "planner": planner, "error": error,
             "context_considered": [e["file"] for e in events], "memory_considered": prior,

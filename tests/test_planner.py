@@ -25,7 +25,7 @@ def test_uses_gemini_leads_when_valid(orders):
     reply = json.dumps({"leads": [{"segment": {"channel": "web"}, "hypothesis": "h",
                                    "event_file": "email.md"}]})
     p = plan(orders_path=orders, events=EVENTS, ask=lambda _: reply)
-    assert p["planner"] == "gemini"
+    assert p["planner"] == "llm"  # a stub with no .engine is reported generically
     assert {"channel": "web"} in [lead["segment"] for lead in p["leads"]]
 
 
@@ -62,7 +62,7 @@ def test_validate_drops_bad_and_duplicate_leads():
 
 
 def test_chain_falls_through_to_next_engine():
-    from causal_crew.planner import LLMChain
+    from causal_crew.llm import LLMChain
 
     def down(_):
         raise TimeoutError("rocketride down")
@@ -72,5 +72,5 @@ def test_chain_falls_through_to_next_engine():
 
 
 def test_parse_json_tolerates_code_fences():
-    from causal_crew.planner import _parse_json
-    assert _parse_json('```json\n{"leads": []}\n```') == {"leads": []}
+    from causal_crew.llm import parse_json
+    assert parse_json('```json\n{"leads": []}\n```') == {"leads": []}

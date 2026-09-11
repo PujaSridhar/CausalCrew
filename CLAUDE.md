@@ -149,9 +149,10 @@ These resolve points the spec left open or that the data showed were wrong. All 
 * Consistency: within the finding's segment, split by each dimension not in it; pass if sub-segments holding ≥80% of baseline revenue move with the aggregate.
 * Bootstrap resamples days, not orders.
 * Checks pass but contribution < 30% → `INSUFFICIENT_EVIDENCE`. Overlap is measured on lost orders.
-* The drill-down path is chosen deterministically (narrow only into sub-segments whose share of the change is ≥1.25× their share of baseline revenue), not by the LLM, for reproducibility.
+* LLM decides the path, within limits: a sub-segment qualifies only if its share of the change is ≥1.25× its share of baseline revenue. The investigator's LLM (via RocketRide) chooses among qualifying sub-segments; the rule overrides unsupported choices and covers LLM outages, and rationales citing numbers not in the evidence are withheld.
 * Investigators use one local DuckDB per lead behind `Workspace`; Hotdata signup required a credit card at the event. Hotdata `fork` per investigator is the drop-in upgrade.
-* RocketRide runs the planner's LLM stage (`pipelines/planner.pipe`, Gemini on the staging server). Investigators fan out locally in threads.
+* RocketRide runs every agent's LLM step on the staging server: the planner and each investigator, each as its own task with a unique project id (RocketRide allows one running task per project). Investigators' SQL runs locally in their own DuckDB workspaces.
+* Changelog notes whose title names a segment always become leads, so the LLM can't drop a relevant note; the LLM fills the remaining lead slots.
 * Memory: SUPPORTED findings go to `memory/findings.jsonl` and back into the planner prompt; Cognee write-back is opt-in (`--remember`) because Gemini's free tier (20 requests/model/day) can't sustain Cognee during a live demo.
 
 ## Working rules for Claude Code
