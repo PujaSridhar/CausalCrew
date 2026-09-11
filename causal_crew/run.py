@@ -110,17 +110,20 @@ def run(orders_path=C.ORDERS_PATH, question=C.DEMO_QUESTION, windows=None, out_d
 
 def _finish(report, out_dir, t0):
     report["seconds"] = round(time.time() - t0, 1)
-    os.makedirs(out_dir, exist_ok=True)
+    base_dir = os.path.abspath(out_dir)
+    os.makedirs(base_dir, exist_ok=True)
     stem = "run_a_broken" if report["outcome"] == "STOPPED" else "run_b_clean"
-    report["files"] = {"json": os.path.join(out_dir, f"{stem}.json"),
-                       "markdown": os.path.join(out_dir, f"{stem}.md")}
-    with open(report["files"]["json"], "w") as f:
+    json_path = os.path.abspath(os.path.join(base_dir, f"{stem}.json"))
+    md_path = os.path.abspath(os.path.join(base_dir, f"{stem}.md"))
+    report["files"] = {"json": json_path, "markdown": md_path}
+    with open(json_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
-    history = os.path.join(out_dir, "history")
+    history = os.path.abspath(os.path.join(base_dir, "history"))
     os.makedirs(history, exist_ok=True)
-    with open(os.path.join(history, f"{report['id']}.json"), "w") as f:
+    hist_path = os.path.abspath(os.path.join(history, f"{report['id']}.json"))
+    with open(hist_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
-    with open(report["files"]["markdown"], "w") as f:
+    with open(md_path, "w") as f:
         f.write(render_markdown(report))
     return report
 

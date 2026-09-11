@@ -465,8 +465,8 @@ function progressHTML(events) {
   if (ids.length) st.investigator.status = ids.length >= leads.length && ids.every((i) => agents[i].status === "done") ? "done" : "running";
   const steps = STAGES.map(([k, name], i) => {
     const s = st[k];
-    let cls = { running: "running", pass: "done", done: "done", fail: "fail" }[s.status] || "";
-    let sub = { pending: "Waiting", running: "Working", pass: "Passed", done: "Done", fail: "Failed" }[s.status] || s.status;
+    let cls = s.status === "running" ? "running" : (s.status === "fail" ? "fail" : (s.status === "pass" || s.status === "done" ? "done" : ""));
+    let sub = s.status === "pending" ? "Waiting" : (s.status === "running" ? "Working" : (s.status === "pass" ? "Passed" : (s.status === "done" ? "Done" : (s.status === "fail" ? "Failed" : s.status))));
     if (stopped && !["question", "health", "report"].includes(k)) { cls = "skipped"; sub = "Skipped"; }
     if (k === "question" && s.detail.windows) sub = `${fmtRange(s.detail.windows.current)} vs ${fmtRange(s.detail.windows.baseline)}`;
     if (k === "planner" && s.detail.engine) sub = `${plural(leads.length, "lead", "leads")} · ${ENGINES[s.detail.engine] || s.detail.engine}`;

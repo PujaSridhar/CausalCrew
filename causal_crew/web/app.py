@@ -116,9 +116,12 @@ def get_run(run_id: str):
 
 @app.get("/api/reports/latest")
 def latest_report(data: str = "clean"):
-    _dataset(data)
-    path = os.path.join(runner.REPORT_DIR, REPORT_FILES[data])
-    if not os.path.exists(path):
+    if data not in REPORT_FILES:
+        raise HTTPException(400, "data must be one of clean, broken")
+    filename = REPORT_FILES[data]
+    base_dir = os.path.abspath(runner.REPORT_DIR)
+    path = os.path.abspath(os.path.join(base_dir, filename))
+    if not path.startswith(base_dir) or not os.path.exists(path):
         raise HTTPException(404, "No saved run yet.")
     with open(path) as f:
         return json.load(f)
@@ -152,11 +155,20 @@ def history(limit: int = 20):
 def history_item(report_id: str):
     if not _REPORT_ID.match(report_id):  # ids only; never a path
         raise HTTPException(400, "Bad report id.")
-    path = os.path.join(runner.REPORT_DIR, "history", f"{report_id}.json")
-    if not os.path.exists(path):
+    base_dir = os.path.abspath(os.path.join(runner.REPORT_DIR, "history"))
+    path = os.path.abspath(os.path.join(base_dir, f"{report_id}.json"))
+    if not path.startswith(base_dir) or not os.path.exists(path):
         raise HTTPException(404, "No such report.")
     with open(path) as f:
         return json.load(f)
+
+
+_ALLOWED_CLAUSES = {
+    "region": "region = ?",
+    "product_category": "product_category = ?",
+    "channel": "channel = ?",
+    "customer_type": "customer_type = ?",
+}
 
 
 @app.get("/api/series")
@@ -167,17 +179,32 @@ def series(segment: str = "{}", data: str = "clean", end: str | None = None, day
         seg = json.loads(segment)
         if not isinstance(seg, dict) or not all(isinstance(v, str) for v in seg.values()):
             raise ValueError("segment must be an object of strings")
-        where, params = segment_filter(seg)
+        for dim in seg:
+            if dim not in _ALLOWED_CLAUSES:
+                raise ValueError(f"unknown dimension: {dim!r}")
         end_date = date.fromisoformat(end) if end else date.fromisoformat(C.DEMO_CURRENT_WINDOW[1])
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     end = end_date
     start = end - timedelta(days=max(14, min(days, 400)) - 1)
+
+    reg = seg.get("region")
+    cat = seg.get("product_category")
+    chan = seg.get("channel")
+    cust = seg.get("customer_type")
+
     with duckdb.connect() as con:
         con.read_parquet(path).create_view("orders")
-        df = con.execute(f"SELECT date, sum(revenue) AS revenue, count(*) AS orders FROM orders "
-                         f"WHERE {where} AND date BETWEEN ? AND ? GROUP BY date ORDER BY date",
-                         params + [start, end]).df()
+        df = con.execute(
+            "SELECT date, sum(revenue) AS revenue, count(*) AS orders FROM orders "
+            "WHERE (? IS NULL OR region = ?) "
+            "  AND (? IS NULL OR product_category = ?) "
+            "  AND (? IS NULL OR channel = ?) "
+            "  AND (? IS NULL OR customer_type = ?) "
+            "  AND date BETWEEN ? AND ? "
+            "GROUP BY date ORDER BY date",
+            [reg, reg, cat, cat, chan, chan, cust, cust, start, end]
+        ).df()
     return {"segment": seg,
             "points": [{"date": str(d.date()), "revenue": round(float(r), 2), "orders": int(n)}
                        for d, r, n in zip(df.date, df.revenue, df.orders, strict=True)]}
