@@ -146,6 +146,9 @@ def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, even
         planner, error, llm_leads = "fallback", f"{type(e).__name__}: {str(e)[:200]}", []
     title_leads = keyword_leads(events, values, taken)
     extra = validate(title_leads + llm_leads, values, taken, files)  # dedupe across both
+    from_titles = {lead["lead_id"] for lead in title_leads}
+    for lead in extra:  # record where each context lead came from
+        lead["source"] = "title" if lead["lead_id"] in from_titles else "llm"
 
     return {"question": question, "total_delta": round(total, 2), "planner": planner, "error": error,
             "context_considered": [e["file"] for e in events], "memory_considered": prior,

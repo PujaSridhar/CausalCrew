@@ -2,11 +2,27 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Web app (http://localhost:8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "causal_crew.web.app:app",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal"
+    },
+    {
       "name": "Demo A: broken data",
       "type": "debugpy",
       "request": "launch",
       "module": "causal_crew.run",
-      "args": ["--broken"],
+      "args": [
+        "--broken"
+      ],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"

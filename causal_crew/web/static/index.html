@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Causal Crew</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --ink: #151821; --muted: #5f6675; --line: #e3e6eb;
+    --accent: #3b5bdb; --accent-soft: #edf1ff;
+    --good: #1c7c47; --good-soft: #e6f5ec; --bad: #c92a2a; --bad-soft: #fdeceb;
+    --warn: #9a6200; --warn-soft: #fdf4e3; --link: #1971c2; --link-soft: #e7f1fc;
+    --violet: #6741d9; --violet-soft: #f1ecff; --neutral-soft: #eef0f3;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+               padding: 14px 32px; background: var(--card); border-bottom: 1px solid var(--line);
+               position: sticky; top: 0; z-index: 10; }
+  .brand { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .brand small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 10px; }
+  .pill { font-size: 12px; padding: 3px 11px; border-radius: 999px; background: var(--neutral-soft); color: var(--muted); }
+  .pill.running { background: var(--link-soft); color: var(--link); }
+  .pill.done { background: var(--good-soft); color: var(--good); }
+  .pill.stopped, .pill.error { background: var(--bad-soft); color: var(--bad); }
+  main { max-width: 1140px; margin: 0 auto; padding: 24px 32px 64px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; }
+  .card h2, h2.section { font-size: 15px; margin: 0 0 12px; }
+  h2.section { margin: 26px 0 12px; font-size: 16px; }
+  .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px; }
+  .hero h1 { font-size: 25px; letter-spacing: -0.015em; margin: 0 0 4px; }
+  .hero .windows { color: var(--muted); margin: 0 0 18px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button { font: inherit; border-radius: 9px; padding: 9px 15px; border: 1px solid var(--line);
+           background: var(--card); color: var(--ink); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #c9ced8; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #3451c6; }
+  button.danger { color: var(--bad); border-color: #efc0c0; font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .actions .note { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+
+  .timeline { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; min-height: 76px; }
+  .step .num { font-size: 11px; color: var(--muted); }
+  .step .name { font-weight: 600; font-size: 13px; }
+  .step .state { font-size: 12px; color: var(--muted); }
+  .step.running { border-color: #9ec5f0; box-shadow: 0 0 0 3px var(--link-soft); }
+  .step.running .state::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px;
+                                border-radius: 50%; background: var(--link); animation: pulse 1s infinite; }
+  .step.done { border-color: #b8dfc7; }
+  .step.done .state { color: var(--good); }
+  .step.failed { border-color: #efc0c0; background: #fffafa; }
+  .step.failed .state { color: var(--bad); }
+  .step.skipped { opacity: 0.55; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: var(--neutral-soft); color: var(--muted); }
+  .chip.running { background: var(--link-soft); color: var(--link); }
+  .chip.done { background: var(--good-soft); color: var(--good); }
+
+  .banner-stop { background: var(--bad-soft); border: 1px solid #efc0c0; border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; color: #6f1d1d; }
+  .banner-stop h2 { margin: 0 0 6px; color: var(--bad); font-size: 19px; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 36px; }
+  .kpi .v { font-size: 23px; font-weight: 700; letter-spacing: -0.015em; }
+  .kpi .l { font-size: 12px; color: var(--muted); }
+  .neg { color: var(--bad); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid2 > .card { margin-bottom: 0; }
+  ul.plain { list-style: none; margin: 0; padding: 0; }
+  ul.plain > li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  ul.plain > li:first-child { border-top: 0; padding-top: 0; }
+  .mark { flex: none; width: 16px; font-weight: 700; }
+  .mark.ok { color: var(--good); } .mark.no { color: var(--bad); }
+  .cname { font-weight: 600; min-width: 112px; }
+  .muted { color: var(--muted); }
+  .tag { flex: none; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; height: fit-content; white-space: nowrap; }
+  .tag.data { background: var(--accent-soft); color: var(--accent); }
+  .tag.title { background: var(--warn-soft); color: var(--warn); }
+  .tag.llm { background: var(--link-soft); color: var(--link); }
+  .seg { font-family: var(--mono); font-size: 12px; background: var(--neutral-soft); padding: 2px 7px; border-radius: 6px; }
+
+  .finding .fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .rank { font-weight: 700; color: var(--muted); }
+  .lead-name { font-weight: 600; }
+  .verdict { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 7px; letter-spacing: 0.02em; }
+  .v-supported { background: var(--good-soft); color: var(--good); }
+  .v-rejected { background: var(--bad-soft); color: var(--bad); }
+  .v-other { background: var(--neutral-soft); color: var(--muted); }
+  .v-linked { background: var(--link-soft); color: var(--link); }
+  .hyp { color: var(--muted); margin: 8px 0 0; }
+  .share { display: flex; align-items: center; gap: 12px; margin: 14px 0 2px; }
+  .share .bar { flex: 1; height: 8px; background: var(--neutral-soft); border-radius: 99px; overflow: hidden; }
+  .share .bar > div { height: 100%; background: var(--accent); border-radius: 99px; }
+  .share b { min-width: 58px; text-align: right; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0 6px; }
+  .fact .l { font-size: 11.5px; color: var(--muted); }
+  .fact .v { font-weight: 600; }
+  .context { border-left: 3px solid var(--link); background: #f6faff; padding: 8px 12px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .chart { margin: 8px 0 4px; min-height: 40px; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart svg text { fill: #6b7280; font-size: 10.5px; }
+  .chart svg text.cp { fill: var(--bad); font-weight: 600; }
+  .chart svg text.ev { fill: var(--link); font-weight: 600; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 10px; }
+  .by { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 5px; margin-right: 6px; }
+  .by.rocketride { background: var(--link-soft); color: var(--link); }
+  .by.gemini { background: var(--violet-soft); color: var(--violet); }
+  .by.rule { background: var(--neutral-soft); color: var(--muted); }
+  ol.drill { margin: 0; padding-left: 18px; }
+  ol.drill li { margin: 0 0 8px; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  pre { background: #0f1320; color: #dde4f3; padding: 12px 14px; border-radius: 8px; overflow: auto;
+        font: 11.5px/1.5 var(--mono); max-height: 320px; white-space: pre-wrap; }
+  .merged-note { color: var(--muted); margin: 8px 0 0; }
+  .empty { color: var(--muted); text-align: center; padding: 48px 0; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 34px; }
+  @media (max-width: 920px) {
+    .timeline { grid-template-columns: repeat(3, 1fr); }
+    .grid2, .cols { grid-template-columns: 1fr; }
+    .facts { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Causal Crew <small>Is the number real? If yes, every lead gets its own investigator.</small></div>
+  <span id="status" class="pill">idle</span>
+</header>
+
+<main>
+  <section class="card hero">
+    <p class="eyebrow">Question</p>
+    <h1 id="question">Loading…</h1>
+    <p class="windows" id="windows"></p>
+    <div class="actions">
+      <button class="primary" id="run-clean">Investigate clean data</button>
+      <button class="danger" id="run-broken">Investigate broken data</button>
+      <button id="last-clean">Last clean run</button>
+      <button id="last-broken">Last broken run</button>
+      <span class="note">Synthetic demo data with a planted cause</span>
+    </div>
+  </section>
+
+  <section class="timeline" id="timeline" aria-label="Pipeline progress"></section>
+  <div id="result"><div class="empty">Run an investigation, or replay the last one, to see the evidence.</div></div>
+
+  <footer>Every number comes from SQL. The LLM proposes leads and drill-down paths; it never writes a number or a verdict.<br>
+    RocketRide · Gemini · DuckDB · Cognee</footer>
+</main>
+
+<script>
+const STAGES = [["health", "Health check"], ["planner", "Planner"], ["investigator", "Investigators"],
+                ["judge", "Judge"], ["memory", "Memory"], ["report", "Report"]];
+const ENGINES = { rocketride: "Gemini via RocketRide", gemini: "Gemini direct", fallback: "keyword fallback", llm: "LLM" };
+const $ = (sel) => document.querySelector(sel);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (x, d = 1) => (x == null ? "—" : `${(x * 100).toFixed(d)}%`);
+const money = (x) => {
+  if (x == null) return "—";
+  const a = Math.abs(x), s = x < 0 ? "−" : "";
+  return a >= 1e6 ? `${s}$${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${s}$${(a / 1e3).toFixed(1)}k` : `${s}$${a.toFixed(0)}`;
+};
+const segText = (s) => Object.entries(s || {}).map(([k, v]) => `${k} = ${v}`).join(" · ");
+const engineOf = (by) => (by.startsWith("rule") ? "rule" : by);
+
+function setStatus(text, cls = "") { const p = $("#status"); p.textContent = text; p.className = `pill ${cls}`; }
+function setBusy(busy) { document.querySelectorAll(".actions button").forEach((b) => (b.disabled = busy)); }
+
+function renderTimeline(events = []) {
+  const st = Object.fromEntries(STAGES.map(([k]) => [k, { status: "pending", detail: {} }]));
+  const leads = {};
+  let stopped = false;
+  for (const e of events) {
+    if (e.stage === "investigator") { leads[e.detail.lead_id] = e.status; continue; }
+    if (e.stage === "run") { st.report.status = "done"; stopped = e.status === "stopped"; continue; }
+    if (st[e.stage]) st[e.stage] = { status: e.status, detail: e.detail || {} };
+  }
+  const ids = Object.keys(leads);
+  if (ids.length) st.investigator.status = ids.every((i) => leads[i] === "done") ? "done" : "running";
+  const html = STAGES.map(([k, name], i) => {
+    const s = st[k];
+    let cls = { running: "running", pass: "done", done: "done", fail: "failed" }[s.status] || "";
+    let label = { pending: "waiting", running: "running", pass: "passed", done: "done", fail: "failed" }[s.status] || s.status;
+    if (stopped && !["health", "report"].includes(k)) { cls = "skipped"; label = "skipped"; }
+    if (k === "report" && stopped) label = "stop report written";
+    if (k === "planner" && s.detail.engine) label = `${s.detail.leads.length} leads · ${ENGINES[s.detail.engine] || s.detail.engine}`;
+    if (k === "investigator" && ids.length) label = `${ids.filter((x) => leads[x] === "done").length}/${ids.length} done, in parallel`;
+    const chips = k === "investigator" && ids.length
+      ? `<div class="chips">${ids.map((x) => `<span class="chip ${leads[x]}">${esc(x)}</span>`).join("")}</div>` : "";
+    return `<div class="step ${cls}"><div class="num">${i + 1}</div><div class="name">${name}</div>
+            <div class="state">${esc(label)}</div>${chips}</div>`;
+  }).join("");
+  $("#timeline").innerHTML = html;
+}
+
+function eventsFromReport(r) {
+  const ev = [{ stage: "health", status: r.health.status === "PASS" ? "pass" : "fail", detail: {} }];
+  if (r.outcome === "STOPPED") return [...ev, { stage: "run", status: "stopped", detail: {} }];
+  ev.push({ stage: "planner", status: "done", detail: { engine: r.plan.planner, leads: r.plan.leads.map((l) => l.lead_id) } });
+  r.investigations.forEach((i) => ev.push({ stage: "investigator", status: "done", detail: { lead_id: i.lead_id } }));
+  ev.push({ stage: "judge", status: "done", detail: {} }, { stage: "memory", status: "done", detail: {} },
+          { stage: "run", status: "done", detail: {} });
+  return ev;
+}
+
+function healthCard(h) {
+  const rows = h.checks.map((c) => `<li><span class="mark ${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "✗"}</span>
+      <span class="cname">${esc(c.name.replace("_", " "))}</span><span class="muted">${esc(c.evidence)}</span></li>`).join("");
+  return `<div class="card"><h2>1 · Can this number be trusted? ${h.status === "PASS" ? "Yes" : "No"}</h2><ul class="plain">${rows}</ul></div>`;
+}
+
+function leadsCard(p) {
+  const rows = p.leads.map((l) => {
+    const tag = l.source === "data" ? `<span class="tag data">From the data</span>`
+      : l.source === "title" ? `<span class="tag title">Changelog note</span>`
+      : `<span class="tag llm">${esc(ENGINES[p.planner] || "LLM")}</span>`;
+    return `<li>${tag}<div><span class="seg">${esc(segText(l.segment))}</span><div class="muted">${esc(l.hypothesis)}</div></div></li>`;
+  }).join("");
+  return `<div class="card"><h2>2 · Leads</h2><ul class="plain">${rows}</ul></div>`;
+}
+
+function summaryCard(r) {
+  const h = r.headline;
+  const supported = r.judgement.findings.filter((f) => f.verdict.startsWith("SUPPORTED")).length;
+  const kpi = (v, l, cls = "") => `<div class="kpi"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`;
+  return `<div class="card"><div class="kpis">
+      ${h ? kpi(`${money(h.baseline)} → ${money(h.current)}`, "Revenue, baseline → current") : ""}
+      ${h ? kpi(pct(h.change), "Change", h.change < 0 ? "neg" : "") : kpi(money(r.plan.total_delta), "Change")}
+      ${kpi(r.plan.leads.length, "Leads investigated in parallel")}
+      ${kpi(supported, "Supported findings")}
+      ${kpi(`${r.seconds}s`, "Run time")}
+    </div></div>`;
+}
+
+function verdictBadges(v) {
+  const [main, ...rest] = v.split(" + ");
+  const cls = main.startsWith("SUPPORTED") ? "v-supported" : main.startsWith("REJECTED") ? "v-rejected" : "v-other";
+  return `<span class="verdict ${cls}">${esc(main)}</span>` + rest.map((x) => `<span class="verdict v-linked">${esc(x)}</span>`).join("");
+}
+
+function findingCard(f, r) {
+  const head = `<div class="fhead"><span class="rank">#${f.rank}</span>${verdictBadges(f.verdict)}
+      <span class="lead-name">${esc(f.lead_id)}</span><span class="seg">${esc(segText(f.segment))}</span></div>`;
+  if (f.merged_into) {
+    return `<div class="card finding">${head}<p class="merged-note">Explains largely the same orders as
+      <b>${esc(f.merged_into)}</b> (${pct(f.overlap, 0)} of its lost orders overlap), so it was merged instead of double-counted.</p></div>`;
+  }
+  const inv = r.investigations.find((i) => i.lead_id === f.lead_id) || { queries: [] };
+  const vr = f.volume_rate || {};
+  const share = Math.min(1, Math.abs(f.contribution || 0));
+  const ctx = f.linked_context;
+  const drill = f.drill_path.map((lvl) => {
+    const what = lvl.chosen ? `narrowed to <span class="seg">${esc(lvl.chosen.dimension)} = ${esc(lvl.chosen.value)}</span>` : "stopped here";
+    return `<li><span class="by ${engineOf(lvl.decided_by)}">${esc(lvl.decided_by)}</span>${what}<div class="muted">${esc(lvl.reason)}</div></li>`;
+  }).join("");
+  const checks = Object.entries(f.checks).map(([name, c]) => `<li><span class="mark ${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "✗"}</span>
+      <span class="cname">${esc(name)}</span><span class="muted">${esc(c.evidence)}</span></li>`).join("");
+  return `<div class="card finding">${head}
+    <p class="hyp">${esc(f.hypothesis)}</p>
+    <div class="share"><span class="muted">Share of the change</span><div class="bar"><div style="width:${(share * 100).toFixed(1)}%"></div></div><b>${pct(f.contribution)}</b></div>
+    <div class="facts">
+      <div class="fact"><div class="l">Change point</div><div class="v">${esc(f.change_point || "—")}</div></div>
+      <div class="fact"><div class="l">Orders, baseline → current</div><div class="v">${(vr.orders_base ?? 0).toLocaleString()} → ${(vr.orders_current ?? 0).toLocaleString()}</div></div>
+      <div class="fact"><div class="l">Average order</div><div class="v">$${(vr.aov_base ?? 0).toFixed(2)} → $${(vr.aov_current ?? 0).toFixed(2)}</div></div>
+      <div class="fact"><div class="l">Explained by fewer orders</div><div class="v">${pct(vr.volume_share, 0)}</div></div>
+    </div>
+    ${ctx ? `<div class="context">Lines up with <b>${esc(ctx.title)}</b> · ${esc(ctx.date)} (${ctx.days_from_change_point >= 0 ? "+" : ""}${ctx.days_from_change_point} days from the change point)</div>` : ""}
+    <div class="chart" id="chart-${esc(f.lead_id)}"><span class="muted">Loading daily revenue…</span></div>
+    <div class="cols">
+      <div><h2>Drill-down path</h2><ol class="drill">${drill}</ol></div>
+      <div><h2>Evidence checks</h2><ul class="plain">${checks}</ul></div>
+    </div>
+    <details><summary>The SQL behind this finding (${inv.queries.length} queries in its own workspace)</summary>
+      <pre>${esc(inv.queries.join(";\n\n"))};</pre></details>
+  </div>`;
+}
+
+function memoryCard(m) {
+  const li = (t) => `<li><span class="muted">${esc(t)}</span></li>`;
+  return `<div class="card"><h2>Memory</h2>
+    <p class="muted" style="margin:0 0 8px">Prior verified findings the planner saw: <b>${m.prior.length}</b> ·
+    newly recorded for the next question: <b>${m.recorded.length}</b></p>
+    <ul class="plain">${m.prior.map(li).join("")}</ul></div>`;
+}
+
+function lineChart(points, changePoint, eventDate, currentStart) {
+  const W = 720, H = 200, P = { l: 52, r: 14, t: 16, b: 26 };
+  const n = points.length;
+  const maxY = Math.max(...points.map((p) => p.revenue)) * 1.12 || 1;
+  const x = (i) => P.l + (i * (W - P.l - P.r)) / Math.max(1, n - 1);
+  const y = (v) => P.t + (H - P.t - P.b) * (1 - v / maxY);
+  const at = (d) => points.findIndex((p) => p.date === d);
+  let g = "";
+  const c0 = at(currentStart);
+  if (c0 >= 0) g += `<rect x="${x(c0)}" y="${P.t}" width="${x(n - 1) - x(c0)}" height="${H - P.t - P.b}" fill="#eef2ff"/>
+                     <text x="${x(n - 1) - 4}" y="${H - P.b - 6}" text-anchor="end">current window</text>`;
+  for (const t of [0, maxY / 2, maxY / 1.12]) {
+    g += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(t)}" y2="${y(t)}" stroke="#eceff3"/>
+          <text x="${P.l - 6}" y="${y(t) + 3}" text-anchor="end">${money(t)}</text>`;
+  }
+  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.revenue).toFixed(1)}`).join("");
+  g += `<path d="${path}" fill="none" stroke="#3b5bdb" stroke-width="2" stroke-linejoin="round"/>`;
+  const cp = at(changePoint), ev = at(eventDate);
+  if (cp >= 0) g += `<line x1="${x(cp)}" x2="${x(cp)}" y1="${P.t}" y2="${H - P.b}" stroke="#c92a2a" stroke-dasharray="4 3"/>
+                     <text class="cp" x="${x(cp) + 5}" y="${P.t + 10}">change point ${esc(changePoint)}</text>`;
+  if (ev >= 0) g += `<circle cx="${x(ev)}" cy="${H - P.b}" r="4.5" fill="#1971c2"/>
+                     <text class="ev" x="${x(ev) + 7}" y="${H - P.b - 6}">${ev === cp ? "note, same day" : "note"}</text>`;
+  g += `<text x="${P.l}" y="${H - 6}">${esc(points[0].date)}</text>
+        <text x="${W - P.r}" y="${H - 6}" text-anchor="end">${esc(points[n - 1].date)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily revenue for this segment">${g}</svg>`;
+}
+
+async function drawChart(f, r) {
+  const el = document.getElementById(`chart-${f.lead_id}`);
+  if (!el) return;
+  const data = r.data.includes("broken") ? "broken" : "clean";
+  try {
+    const res = await fetch(`/api/series?data=${data}&segment=${encodeURIComponent(JSON.stringify(f.segment))}`);
+    if (!res.ok) throw new Error(res.statusText);
+    const { points } = await res.json();
+    el.innerHTML = points.length ? lineChart(points, f.change_point, f.linked_context?.date, r.windows.current[0])
+                                 : `<span class="muted">No data for this segment.</span>`;
+  } catch (e) { el.innerHTML = `<span class="muted">Chart unavailable (${esc(e.message)}).</span>`; }
+}
+
+function renderReport(r, events) {
+  renderTimeline(events || eventsFromReport(r));
+  const out = [];
+  if (r.outcome === "STOPPED") {
+    const failed = r.health.checks.filter((c) => !c.ok);
+    const days = [...new Set(failed.flatMap((c) => c.days))];
+    out.push(`<div class="banner-stop"><h2>Don't trust this number yet</h2>
+      ${failed.length} health check${failed.length === 1 ? "" : "s"} failed${days.length ? ` on <b>${days.map(esc).join(", ")}</b>` : ""}.
+      The investigation stopped before explaining a change the data can't support.</div>`);
+    out.push(healthCard(r.health));
+    setStatus("stopped: data failed the health check", "stopped");
+  } else {
+    out.push(summaryCard(r));
+    out.push(`<div class="grid2">${healthCard(r.health)}${leadsCard(r.plan)}</div>`);
+    out.push(`<h2 class="section">3 · Findings, ranked by the judge</h2>`);
+    r.judgement.findings.forEach((f) => out.push(findingCard(f, r)));
+    out.push(memoryCard(r.memory));
+    setStatus(`done in ${r.seconds}s`, "done");
+  }
+  $("#result").innerHTML = out.join("");
+  (r.judgement?.findings || []).filter((f) => !f.merged_into).forEach((f) => drawChart(f, r));
+}
+
+async function start(data) {
+  setBusy(true);
+  setStatus("investigating", "running");
+  renderTimeline([]);
+  $("#result").innerHTML = `<div class="empty">Investigating…</div>`;
+  const res = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    setStatus(err.detail || "could not start", "error");
+    setBusy(false);
+    return;
+  }
+  poll((await res.json()).id);
+}
+
+async function poll(id) {
+  const s = await (await fetch(`/api/runs/${id}`)).json();
+  renderTimeline(s.events);
+  if (s.status === "running") { setTimeout(() => poll(id), 600); return; }
+  setBusy(false);
+  if (s.status === "error") {
+    setStatus("error", "error");
+    $("#result").innerHTML = `<div class="banner-stop"><h2>The run failed</h2>${esc(s.error)}</div>`;
+    return;
+  }
+  renderReport(s.report, s.events);
+}
+
+async function showLast(data) {
+  const res = await fetch(`/api/reports/latest?data=${data}`);
+  if (!res.ok) { setStatus("no saved run yet", "error"); return; }
+  renderReport(await res.json());
+}
+
+(async function init() {
+  renderTimeline([]);
+  const m = await (await fetch("/api/meta")).json();
+  $("#question").textContent = m.question;
+  $("#windows").textContent = `Baseline ${m.windows.baseline[0]} → ${m.windows.baseline[1]} · current ${m.windows.current[0]} → ${m.windows.current[1]}`;
+  $("#run-clean").onclick = () => start("clean");
+  $("#run-broken").onclick = () => start("broken");
+  $("#last-clean").onclick = () => showLast("clean");
+  $("#last-broken").onclick = () => showLast("broken");
+})();
+</script>
+</body>
+</html>

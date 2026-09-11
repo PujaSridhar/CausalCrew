@@ -21,3 +21,6 @@ reports/
 
 # findings memory written by runs
 memory/
+
+# local Claude Code preview config
+.claude/

@@ -13,6 +13,9 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+
+import duckdb
 
 from causal_crew import config as C
 from causal_crew import health, investigator, memory, planner
@@ -21,27 +24,58 @@ from causal_crew import judge as judge_mod
 REPORT_DIR = os.path.join(os.path.dirname(C.WORKSPACE_DIR), "reports")
 
 
+def _headline(orders_path):
+    """Revenue in the baseline and current windows: the number being explained."""
+    (b0, b1), (c0, c1) = [tuple(date.fromisoformat(d) for d in w)
+                          for w in (C.DEMO_BASELINE_WINDOW, C.DEMO_CURRENT_WINDOW)]
+    with duckdb.connect() as con:
+        base, cur = con.execute(
+            "SELECT sum(CASE WHEN date BETWEEN ? AND ? THEN revenue END), "
+            "sum(CASE WHEN date BETWEEN ? AND ? THEN revenue END) FROM read_parquet(?)",
+            [b0, b1, c0, c1, orders_path]).fetchone()
+    return {"baseline": round(base, 2), "current": round(cur, 2), "change": round(cur / base - 1, 4)}
+
+
 def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPACE_DIR,
-        memory_path=memory.MEMORY_PATH, remember=False, decide=None):
+        memory_path=memory.MEMORY_PATH, remember=False, decide=None, on_event=None):
+    """Run every stage. on_event(stage, status, detail) reports progress (used by the web app)."""
+    emit = on_event or (lambda *_args: None)
     t0 = time.time()
     report = {"question": C.DEMO_QUESTION, "data": os.path.basename(orders_path),
               "windows": {"baseline": list(C.DEMO_BASELINE_WINDOW), "current": list(C.DEMO_CURRENT_WINDOW)}}
 
+    emit("health", "running", {})
     report["health"] = health.run(orders_path)
+    emit("health", report["health"]["status"].lower(), {"failed": report["health"]["failed"]})
     if report["health"]["status"] == "FAIL":
         report["outcome"] = "STOPPED"
-        return _finish(report, out_dir, t0)
+        result = _finish(report, out_dir, t0)
+        emit("run", "stopped", {})
+        return result
 
+    report["headline"] = _headline(orders_path)
+    emit("planner", "running", {})
     report["plan"] = planner.plan(orders_path=orders_path, ask=ask,
                                   memory_records=memory.recall(memory_path))
     leads = report["plan"]["leads"]
+    emit("planner", "done", {"engine": report["plan"]["planner"],
+                              "leads": [lead["lead_id"] for lead in leads]})
     decide = decide or investigator.llm_decider
+
+    def investigate(lead):
+        emit("investigator", "running", {"lead_id": lead["lead_id"]})
+        finding = investigator.investigate(lead["lead_id"], lead["segment"], lead["hypothesis"],
+                                           orders_path=orders_path, root=root, decide=decide)
+        emit("investigator", "done", {"lead_id": lead["lead_id"],
+                                       "decided_by": [lvl["decided_by"] for lvl in finding["drill_path"]]})
+        return finding
+
     with ThreadPoolExecutor(max_workers=len(leads)) as pool:
-        findings = list(pool.map(
-            lambda lead: investigator.investigate(lead["lead_id"], lead["segment"], lead["hypothesis"],
-                                                  orders_path=orders_path, root=root, decide=decide), leads))
+        findings = list(pool.map(investigate, leads))
     report["investigations"] = findings
+    emit("judge", "running", {})
     report["judgement"] = judge_mod.judge(findings, orders_path=orders_path)
+    emit("judge", "done", {"verdicts": {f["lead_id"]: f["verdict"] for f in report["judgement"]["findings"]}})
     recorded = memory.write_back(report["judgement"]["findings"], report["question"],
                                  report["windows"], memory_path)
     report["memory"] = {"prior": report["plan"]["memory_considered"], "recorded": recorded, "cognee": None}
@@ -51,8 +85,11 @@ def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPAC
             report["memory"]["cognee"] = f"stored {n} finding(s)"
         except Exception as e:  # Cognee is an optional extra, never a reason to fail the run
             report["memory"]["cognee"] = f"skipped: {type(e).__name__}: {str(e)[:150]}"
+    emit("memory", "done", {"recorded": len(recorded)})
     report["outcome"] = "INVESTIGATED"
-    return _finish(report, out_dir, t0)
+    result = _finish(report, out_dir, t0)
+    emit("run", "done", {})
+    return result
 
 
 def _finish(report, out_dir, t0):
@@ -93,6 +130,9 @@ def render_markdown(r):
                     "The investigation stopped here; fix the data before explaining the change.", ""]
         return "\n".join(out)
 
+    h = r.get("headline")
+    if h:
+        out += ["", f"**Revenue:** ${h['baseline']:,.0f} → ${h['current']:,.0f} ({h['change']:+.1%})"]
     p = r["plan"]
     engine = {"rocketride": "Gemini via RocketRide", "gemini": "Gemini direct",
               "fallback": "keyword fallback, LLM unavailable"}.get(p["planner"], p["planner"])
