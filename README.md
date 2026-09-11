@@ -36,14 +36,24 @@ Pre-build prep only. What exists today:
 - `context/` — ten changelog and incident notes for Cognee
 - `causal_crew/config.py` — every threshold in one place
 
+## Setup
+
+```bash
+uv venv .venv --python 3.13
+uv pip install --python .venv/bin/python -r requirements.txt
+brew install hotdata-dev/tap/cli
+cp .env.example .env    # then fill in keys
+hotdata auth login      # opens a browser
+```
+
 ## Demo data
 
 The data is **synthetic**, with a planted cause. See
 [PLANTED_CAUSE.md](PLANTED_CAUSE.md) for exactly what was planted.
 
 ```bash
-python3 data/generate_orders.py   # ~10s, deterministic
-python3 data/verify_orders.py     # exits non-zero if the demo wouldn't read as designed
+.venv/bin/python data/generate_orders.py   # ~10s, deterministic
+.venv/bin/python data/verify_orders.py     # exits non-zero if the demo wouldn't read as designed
 ```
 
 Outputs `data/orders.{parquet,csv}` (clean) and `data/orders_broken.{parquet,csv}`
