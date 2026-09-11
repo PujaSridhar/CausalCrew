@@ -5,6 +5,7 @@ among options computed in SQL and to write hypotheses, and they validate
 every reply before using it.
 """
 
+import ast
 import json
 import os
 import re
@@ -52,9 +53,21 @@ class LLMChain:
 
 
 def parse_json(text):
-    """Pull the JSON object out of a reply, tolerating ```json fences."""
+    """Pull the object out of a reply, tolerating ```json fences and Python-style dicts.
+
+    RocketRide's Gemini node can hand back a Python repr (single quotes) instead of
+    JSON. ast.literal_eval accepts literals only and never executes code; callers
+    still validate every field.
+    """
     m = re.search(r"\{.*\}", text.strip(), re.S)
-    return json.loads(m.group(0) if m else text)
+    body = m.group(0) if m else text
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        value = ast.literal_eval(body)
+        if not isinstance(value, dict):
+            raise ValueError("the reply is not an object") from None
+        return value
 
 
 def planner_llm():

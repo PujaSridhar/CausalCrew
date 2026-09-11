@@ -31,8 +31,9 @@ def run(orders_path=C.ORDERS_PATH, windows=None, expected_latest=C.DEMO_EXPECTED
         # freshness
         q = "SELECT max(date) FROM orders"
         latest = con.execute(q).fetchone()[0]
-        checks.append(_check("freshness", latest == expected,
-                             f"max(date) = {latest}, expected {expected}", sql=q))
+        # the data must cover the window the question asks about
+        checks.append(_check("freshness", latest >= expected,
+                             f"data runs through {latest}; the question needs {expected}", sql=q))
 
         # row counts: robust z vs the trailing window, with a relative floor
         t0 = c0 - timedelta(days=C.ROW_COUNT_TRAILING_DAYS)

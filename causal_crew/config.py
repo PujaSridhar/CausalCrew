@@ -9,6 +9,17 @@ DEMO_CURRENT_WINDOW = ("2026-08-27", "2026-09-09")
 DEMO_BASELINE_WINDOW = ("2026-08-13", "2026-08-26")
 DEMO_EXPECTED_LATEST_DATE = "2026-09-09"
 DEMO_QUESTION = "Revenue dropped in the last two weeks. Why?"
+DEMO_SUGGESTIONS = (
+    "Revenue dropped in the last two weeks. Why?",
+    "What explains the change in revenue over the last 3 weeks?",
+    "Why did revenue move over the past month?",
+    "Is last week's revenue number real?",
+)
+
+# --- Question -------------------------------------------------------------
+QUESTION_DEFAULT_DAYS = 14
+QUESTION_MIN_WINDOW_DAYS = 3
+QUESTION_MAX_WINDOW_DAYS = 90
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDERS_PATH = os.path.join(_ROOT, "data", "orders.parquet")

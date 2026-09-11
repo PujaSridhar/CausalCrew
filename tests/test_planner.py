@@ -1,6 +1,8 @@
 import json
 from datetime import date
 
+import pytest
+
 from causal_crew.planner import plan, validate
 
 EVENTS = [
@@ -74,3 +76,11 @@ def test_chain_falls_through_to_next_engine():
 def test_parse_json_tolerates_code_fences():
     from causal_crew.llm import parse_json
     assert parse_json('```json\n{"leads": []}\n```') == {"leads": []}
+
+
+def test_parse_json_accepts_python_style_dicts_but_never_code():
+    from causal_crew.llm import parse_json
+    expected = {"leads": [{"segment": {"channel": "email"}}]}
+    assert parse_json("{'leads': [{'segment': {'channel': 'email'}}]}") == expected
+    with pytest.raises((ValueError, SyntaxError)):
+        parse_json("__import__('os').system('echo pwned')")
