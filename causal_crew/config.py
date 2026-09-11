@@ -1,11 +1,18 @@
 """Every threshold Causal Crew uses, in one place."""
 
+import os
+
 # --- Demo question ----------------------------------------------------------
 # The question the demo asks: why did revenue change in CURRENT vs BASELINE?
 DEMO_METRIC = "revenue"
 DEMO_CURRENT_WINDOW = ("2026-08-27", "2026-09-09")
 DEMO_BASELINE_WINDOW = ("2026-08-13", "2026-08-26")
 DEMO_EXPECTED_LATEST_DATE = "2026-09-09"
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ORDERS_PATH = os.path.join(_ROOT, "data", "orders.parquet")
+ORDERS_BROKEN_PATH = os.path.join(_ROOT, "data", "orders_broken.parquet")
+WORKSPACE_DIR = os.path.join(_ROOT, "workspaces")
 
 DIMENSIONS = ("region", "product_category", "channel", "customer_type")
 KEY_COLUMNS = ("order_id", "date", "region", "product_category",
