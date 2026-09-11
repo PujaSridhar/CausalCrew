@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from causal_crew import config as C
 from causal_crew import question as questions
 from causal_crew import run as runner
+from causal_crew.segments import segment_filter
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 DATASETS = {"clean": C.ORDERS_PATH, "broken": C.ORDERS_BROKEN_PATH}
@@ -162,12 +163,9 @@ def history_item(report_id: str):
         return json.load(f)
 
 
-_ALLOWED_CLAUSES = {
-    "region": "region = ?",
-    "product_category": "product_category = ?",
-    "channel": "channel = ?",
-    "customer_type": "customer_type = ?",
-}
+# One clause per configured dimension, built once from config: the SQL text never
+# depends on the request, and every value is bound as a parameter.
+_SERIES_WHERE = " AND ".join(f"(? IS NULL OR {dim} = ?)" for dim in C.DIMENSIONS)
 
 
 @app.get("/api/series")
@@ -178,32 +176,20 @@ def series(segment: str = "{}", data: str = "clean", end: str | None = None, day
         seg = json.loads(segment)
         if not isinstance(seg, dict) or not all(isinstance(v, str) for v in seg.values()):
             raise ValueError("segment must be an object of strings")
-        for dim in seg:
-            if dim not in _ALLOWED_CLAUSES:
-                raise ValueError(f"unknown dimension: {dim!r}")
+        segment_filter(seg)  # raises on an unknown dimension name
         end_date = date.fromisoformat(end) if end else date.fromisoformat(C.DEMO_CURRENT_WINDOW[1])
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     end = end_date
     start = end - timedelta(days=max(14, min(days, 400)) - 1)
 
-    reg = seg.get("region")
-    cat = seg.get("product_category")
-    chan = seg.get("channel")
-    cust = seg.get("customer_type")
-
+    values = [v for dim in C.DIMENSIONS for v in (seg.get(dim), seg.get(dim))]
     with duckdb.connect() as con:
         con.read_parquet(path).create_view("orders")
         df = con.execute(
             "SELECT date, sum(revenue) AS revenue, count(*) AS orders FROM orders "
-            "WHERE (? IS NULL OR region = ?) "
-            "  AND (? IS NULL OR product_category = ?) "
-            "  AND (? IS NULL OR channel = ?) "
-            "  AND (? IS NULL OR customer_type = ?) "
-            "  AND date BETWEEN ? AND ? "
-            "GROUP BY date ORDER BY date",
-            [reg, reg, cat, cat, chan, chan, cust, cust, start, end]
-        ).df()
+            f"WHERE {_SERIES_WHERE} AND date BETWEEN ? AND ? GROUP BY date ORDER BY date",
+            values + [start, end]).df()
     return {"segment": seg,
             "points": [{"date": str(d.date()), "revenue": round(float(r), 2), "orders": int(n)}
                        for d, r, n in zip(df.date, df.revenue, df.orders, strict=True)]}

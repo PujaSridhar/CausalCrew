@@ -130,10 +130,11 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 
 | Tool / Layer | Role here |
 |---|---|
-| **RocketRide** | Multi-agent orchestration: runs the planner fan-out (`pipelines/planner.pipe`) and parallel investigator waves (`pipelines/investigator.pipe`), each as its own task with a unique project ID. |
-| **DuckDB Workspaces** | Data layer: provides task-scoped, isolated databases (`workspaces/{lead_id}.duckdb`) for each parallel agent. Ensures zero lock contention and private scratch spaces. |
-| **Snyk** | Cybersecurity: Continuous dependency scanning (`make scan`) and SAST analysis. Monitored on Snyk Cloud with 0 vulnerable paths and 0 high-severity issues. |
-| **Cognee** | Knowledge engine: Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
+| **RocketRide** | Runs every agent's LLM step on the staging server, each as its own task with a unique project id: the planner (`pipelines/planner.pipe`) and each investigator's drill-down decisions (`pipelines/investigator.pipe`). The fan-out itself runs in Python threads. |
+| **DuckDB workspaces** | One isolated database per investigator (`workspaces/{lead_id}.duckdb`), each with its own copy of the data and its own scratch tables, so agents never share state. |
+| **Hotdata** | Designed in behind the `Workspace` interface (one forked instant database per investigator); not live because signup needed a credit card at the event. |
+| **Cognee** | Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
+| **Snyk** | Dependency scanning (`make scan`): the 34 core dependencies have no known vulnerabilities. Static analysis (`snyk code test`): 8 medium DOM-XSS warnings, all on the dashboard's `innerHTML` rendering, where every value is escaped first. See Security. |
 
 ## Security
 
@@ -156,8 +157,11 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
   HTML-escapes all LLM text.
 - **SQL.** Dimension names are checked against config; values are always bound as
   parameters.
-- **Static analysis.** `ruff` runs in CI. Snyk Code (SAST) has to be enabled for the
-  Snyk organization before `snyk code test` will run.
+- **Static analysis.** `ruff` runs in CI. `snyk code test` reports 8 medium DOM-XSS
+  warnings, all where the dashboard builds HTML with `innerHTML`. Each is a value that
+  passes through the page's escaping helper first, which Snyk's taint analysis can't
+  follow; the two error paths that carried a message were rewritten to use `textContent`
+  so nothing from the network reaches `innerHTML` there. They are tracked, not ignored.
 
 ## Limitations
 
