@@ -42,7 +42,7 @@ Reports land in `reports/` as Markdown and JSON, with the SQL behind every numbe
 |---|---|---|
 | Health check | `causal_crew/health.py` | freshness, row counts, duplicates, null spikes, scale break |
 | Planner | `causal_crew/planner.py` | data-driven leads from SQL; Gemini adds context leads; title-keyword fallback if Gemini is down |
-| Investigator | `causal_crew/investigator.py`, `workspace.py` | one isolated database per lead (local DuckDB while Hotdata access is pending) |
+| Investigator | `causal_crew/investigator.py`, `workspace.py` | one isolated DuckDB database per lead, behind a small `Workspace` interface. Hotdata instant databases with one fork per investigator are the drop-in upgrade; account signup needed a credit card at the event, so the demo runs on DuckDB |
 | Judge | `causal_crew/judge.py` | noise, seasonality, consistency, timing, overlap merge, verdicts |
 | Runner + report | `causal_crew/run.py` | stages in order, investigators in parallel |
 | Memory | `scripts/ingest_context.py` | loads context notes into Cognee; the planner reads the notes directly as the spec's fallback |
