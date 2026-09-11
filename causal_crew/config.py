@@ -13,6 +13,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDERS_PATH = os.path.join(_ROOT, "data", "orders.parquet")
 ORDERS_BROKEN_PATH = os.path.join(_ROOT, "data", "orders_broken.parquet")
 WORKSPACE_DIR = os.path.join(_ROOT, "workspaces")
+CONTEXT_DIR = os.path.join(_ROOT, "context")
 
 DIMENSIONS = ("region", "product_category", "channel", "customer_type")
 KEY_COLUMNS = ("order_id", "date", "region", "product_category",
@@ -33,6 +34,10 @@ SCALE_BREAK_RATIO = (0.2, 5.0)    # median order value, current / baseline
 MIN_DRILL_DEPTH = 2
 CHANGE_POINT_LOOKBACK_DAYS = 56
 CHANGE_POINT_MIN_SEGMENT_DAYS = 7
+# Narrow into a sub-segment only if its share of the delta is at least this
+# multiple of its share of baseline revenue. Below it, the effect is spread
+# evenly and drilling further would just follow the biggest bucket.
+DRILL_MIN_CONCENTRATION = 1.25
 
 # --- [5] Judge --------------------------------------------------------------
 MIN_ORDERS_PER_WINDOW = 200
