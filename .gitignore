@@ -12,3 +12,6 @@ data/*.parquet
 
 # per-investigator databases
 workspaces/
+
+# generated reports
+reports/
