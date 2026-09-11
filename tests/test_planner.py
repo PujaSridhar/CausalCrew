@@ -59,3 +59,18 @@ def test_validate_drops_bad_and_duplicate_leads():
     out = validate(cands, VALUES, taken=[{"region": "West"}], event_files={"email.md"})
     assert [lead["segment"] for lead in out] == [{"channel": "app"}]
     assert out[0]["event_file"] is None
+
+
+def test_chain_falls_through_to_next_engine():
+    from causal_crew.planner import LLMChain
+
+    def down(_):
+        raise TimeoutError("rocketride down")
+    chain = LLMChain(("rocketride", down), ("gemini", lambda _: '{"leads": []}'))
+    assert chain("p") == '{"leads": []}' and chain.engine == "gemini"
+    assert "rocketride: TimeoutError" in chain.errors[0]
+
+
+def test_parse_json_tolerates_code_fences():
+    from causal_crew.planner import _parse_json
+    assert _parse_json('```json\n{"leads": []}\n```') == {"leads": []}

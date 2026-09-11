@@ -20,7 +20,7 @@ from causal_crew import judge as judge_mod
 REPORT_DIR = os.path.join(os.path.dirname(C.WORKSPACE_DIR), "reports")
 
 
-def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=planner.ask_gemini, root=C.WORKSPACE_DIR):
+def run(orders_path=C.ORDERS_PATH, out_dir=REPORT_DIR, ask=None, root=C.WORKSPACE_DIR):
     t0 = time.time()
     report = {"question": C.DEMO_QUESTION, "data": os.path.basename(orders_path),
               "windows": {"baseline": list(C.DEMO_BASELINE_WINDOW), "current": list(C.DEMO_CURRENT_WINDOW)}}
@@ -81,7 +81,9 @@ def render_markdown(r):
         return "\n".join(out)
 
     p = r["plan"]
-    out += ["", f"## 2. Leads ({p['planner']})", ""]
+    engine = {"rocketride": "Gemini via RocketRide", "gemini": "Gemini direct",
+              "fallback": "keyword fallback, LLM unavailable"}.get(p["planner"], p["planner"])
+    out += ["", f"## 2. Leads ({engine})", ""]
     for lead in p["leads"]:
         src = f"context: `{lead['event_file']}`" if lead["event_file"] else lead["source"]
         out.append(f"- **{lead['lead_id']}** `{lead['segment']}` ({src}) — {lead['hypothesis']}")

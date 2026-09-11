@@ -1,7 +1,8 @@
 """Planner: turn the question, the data, and nearby context into 3-4 leads.
 
 Data-driven leads come straight from SQL (the largest single-dimension
-deltas), so the context can't decide which leads exist. Gemini adds
+deltas), so the context can't decide which leads exist. Gemini, run as a
+RocketRide pipeline (direct Gemini as a backup), adds
 context-driven leads and writes their hypotheses; it never produces numbers.
 If Gemini fails, a keyword match between context notes and data values stands
 in, so the demo path never depends on the LLM being up.
@@ -95,6 +96,35 @@ def ask_gemini(prompt):
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
+class LLMChain:
+    """Try each engine in order; remember which one answered."""
+
+    def __init__(self, *engines):
+        self.engines, self.engine, self.errors = engines, None, []
+
+    def __call__(self, prompt):
+        self.errors = []
+        for name, fn in self.engines:
+            try:
+                text = fn(prompt)
+                self.engine = name
+                return text
+            except Exception as e:
+                self.errors.append(f"{name}: {type(e).__name__}: {str(e)[:150]}")
+        raise RuntimeError("; ".join(self.errors))
+
+
+def default_llm():
+    from causal_crew.rocketride_llm import ask_rocketride
+    return LLMChain(("rocketride", ask_rocketride), ("gemini", ask_gemini))
+
+
+def _parse_json(text):
+    """Pull the JSON object out of a reply, tolerating ```json fences."""
+    m = re.search(r"\{.*\}", text.strip(), re.S)
+    return json.loads(m.group(0) if m else text)
+
+
 def validate(candidates, values, taken, event_files):
     """Keep only well-formed leads on real dimension values that aren't duplicates."""
     out, seen = [], {frozenset(s.items()) for s in taken}
@@ -131,22 +161,24 @@ def keyword_leads(events, values, taken):
     return validate(cands, values, taken, {e["file"] for e in events})
 
 
-def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, events=None, ask=ask_gemini):
+def plan(question=C.DEMO_QUESTION, orders_path=C.ORDERS_PATH, windows=None, events=None, ask=None):
     windows = windows or default_windows()
+    ask = ask or default_llm()
     events = context_near(load_context() if events is None else events, windows)
     data_leads, values, total = data_driven_leads(orders_path, windows)
     taken = [lead["segment"] for lead in data_leads]
     room = C.PLANNER_MAX_LEADS - len(data_leads)
 
-    planner, error = "gemini", None
+    error = None
     try:
-        parsed = json.loads(ask(_prompt(question, values, data_leads, events)))
+        parsed = _parse_json(ask(_prompt(question, values, data_leads, events)))
         extra = validate(parsed.get("leads", []), values, taken, {e["file"] for e in events})
+        planner = getattr(ask, "engine", None) or "gemini"
     except Exception as e:  # any LLM failure falls back to the deterministic path
         planner, error = "fallback", f"{type(e).__name__}: {str(e)[:200]}"
         extra = keyword_leads(events, values, taken)
-    if planner == "gemini" and not extra:
-        planner = "gemini+fallback"
+    if planner != "fallback" and not extra:
+        planner += "+fallback"
         extra = keyword_leads(events, values, taken)
 
     return {"question": question, "total_delta": round(total, 2), "planner": planner, "error": error,

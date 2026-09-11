@@ -46,7 +46,7 @@ Reports land in `reports/` as Markdown and JSON, with the SQL behind every numbe
 | Judge | `causal_crew/judge.py` | noise, seasonality, consistency, timing, overlap merge, verdicts |
 | Runner + report | `causal_crew/run.py` | stages in order, investigators in parallel |
 | Memory | `scripts/ingest_context.py` | loads context notes into Cognee; the planner reads the notes directly as the spec's fallback |
-| Orchestration | RocketRide | staging connection verified; pipeline in progress |
+| Orchestration | RocketRide, `pipelines/planner.pipe` | the planner's Gemini call runs as a RocketRide pipeline on staging; direct Gemini, then a keyword match, are fallbacks |
 
 ## Setup
 
