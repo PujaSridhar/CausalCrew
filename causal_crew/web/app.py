@@ -74,13 +74,14 @@ def meta():
 def start_run(req: RunRequest):
     path = _dataset(req.data)
     question = (req.question or C.DEMO_QUESTION).strip()[:300]
+    if not os.path.exists(path):
+        raise HTTPException(503, "The dataset hasn't been generated yet. Run `make data` first.")
     if req.windows is not None:
         try:
             w = questions.parse_windows(req.windows)
-            first, latest = questions.data_range(path)
-            err = questions.validate_windows(w, first, latest)
         except ValueError as e:
-            err = str(e)
+            raise HTTPException(400, f"Can't use those dates: {e}.") from e
+        err = questions.validate_windows(w, *questions.data_range(path))
         if err:
             raise HTTPException(400, f"Can't use those dates: {err}.")
     if not _busy.acquire(blocking=False):

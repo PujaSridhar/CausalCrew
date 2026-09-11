@@ -14,6 +14,13 @@ from causal_crew.web import app as web
 client = TestClient(web.app)
 
 
+@pytest.fixture(autouse=True)
+def fixture_data(monkeypatch, orders):
+    """Point the app at the synthetic test data, so tests never depend on generated files."""
+    monkeypatch.setitem(web.DATASETS, "clean", orders)
+    monkeypatch.setitem(web.DATASETS, "broken", orders)
+
+
 def _wait(run_id, timeout=5):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -74,9 +81,16 @@ def test_latest_report_404_until_a_run_exists(monkeypatch, tmp_path):
 
 def test_bad_dates_are_rejected_before_running(monkeypatch):
     monkeypatch.setattr(web.app.state, "run", lambda *a, **k: {"outcome": "INVESTIGATED"})
-    bad = {"baseline": ["2026-09-01", "2026-09-05"], "current": ["2026-08-01", "2026-08-05"]}
-    r = client.post("/api/runs", json={"data": "clean", "windows": bad})
-    assert r.status_code in (400, 404) or "dates" in r.text
+    backwards = {"baseline": ["2026-09-01", "2026-09-05"], "current": ["2026-08-01", "2026-08-05"]}
+    r = client.post("/api/runs", json={"data": "clean", "windows": backwards})
+    assert r.status_code == 400 and "dates" in r.json()["detail"]
+    assert client.post("/api/runs", json={"data": "clean", "windows": {"current": ["nope"]}}).status_code == 400
+
+
+def test_missing_dataset_is_a_clear_503(monkeypatch, tmp_path):
+    monkeypatch.setitem(web.DATASETS, "clean", str(tmp_path / "missing.parquet"))
+    r = client.post("/api/runs", json={"data": "clean"})
+    assert r.status_code == 503 and "make data" in r.json()["detail"]
 
 
 def test_question_and_windows_reach_the_pipeline(monkeypatch):

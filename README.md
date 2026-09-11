@@ -37,12 +37,14 @@ flowchart TD
 
 | Stage | Module | What it does |
 |---|---|---|
+| 0. Question | `causal_crew/question.py` | Relative periods ("last two weeks") are computed in code. Other phrasings are read by Gemini via RocketRide and validated against the data. Users can also set the dates. |
 | 1. Health check | `causal_crew/health.py` | Freshness, row counts (robust z + relative floor), duplicate order ids, days copied under new ids, null spikes, unit/scale breaks. Any failure stops the run. |
 | 2-3. Planner | `causal_crew/planner.py` | The largest single-dimension deltas always become leads (SQL). Changelog notes whose title names a segment always become leads too. Gemini, run as a RocketRide pipeline, fills the remaining slots using nearby notes and prior findings. |
 | 4. Investigators | `causal_crew/investigator.py`, `workspace.py` | One per lead, in parallel, each in its own database: size the lead, drill down two levels, find the change point, split volume from order value, match context. At each level the investigator's own RocketRide pipeline task chooses the path among sub-segments that pass a statistical threshold. Every query is logged. |
 | 5. Judge | `causal_crew/judge.py` | Deterministic evidence checks, overlap merge, ranking, verdicts. The LLM never writes a verdict. |
 | 6. Report | `causal_crew/run.py` | Markdown + JSON, with the SQL behind every number. |
 | 7. Memory | `causal_crew/memory.py` | Supported findings are appended to `memory/findings.jsonl` and fed to the planner next run; optionally pushed to Cognee (`--remember`). |
+| Web app | `causal_crew/web/` | FastAPI and a single-page dashboard: ask a question, watch the pipeline and the investigator crew, read a plain-English answer built only from the judge's output, then drill into findings, data health, leads, memory, and SQL. Past runs are kept in history. |
 | LLM layer | `causal_crew/llm.py`, `rocketride_llm.py` | RocketRide first, Gemini direct as backup, per agent. Each call is its own RocketRide task with a unique project id. |
 
 Every threshold lives in [`causal_crew/config.py`](causal_crew/config.py).
@@ -58,6 +60,7 @@ ending two days earlier) dips email orders in every region — and did the same 
 make setup     # venv + dependencies
 make data      # generate 637k orders (+ a broken copy) and verify the planted story
 make test      # unit tests + lint, no network
+make app       # the dashboard at http://localhost:8000
 make demo-a    # Run A: broken data
 make demo-b    # Run B: clean data
 ```
@@ -107,6 +110,10 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 - **Graceful degradation.** The planner tries Gemini via RocketRide, then Gemini
   directly, then a keyword match on changelog titles; the report names which one
   answered. Cognee is opt-in. The demo never depends on an LLM being up.
+- **Dates are arithmetic, not language.** Relative periods are computed in code. Asked
+  for "the last two weeks", an LLM once returned 15-day windows, which silently shifted
+  every number downstream. The LLM only reads phrasings the rule can't, and its dates
+  are validated against the data.
 - **No secrets in the repo.** `pipelines/planner.pipe` holds a `${ROCKETRIDE_GEMINI_KEY}`
   placeholder that RocketRide fills at run time; keys live only in `.env`.
 
@@ -142,7 +149,8 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
   proxy server is never started.
 - **Secrets** live only in `.env`. Pipeline files hold `${ROCKETRIDE_GEMINI_KEY}`
   placeholders, and commits were scanned for key material before every push.
-- **LLM output is untrusted input.** Planner leads are validated against real
+- **LLM output is untrusted input.** Replies are parsed as JSON or as Python literals
+  (`ast.literal_eval`), never executed. Planner leads are validated against real
   dimension values, investigator path choices against the statistical threshold,
   rationales that cite a number not in the evidence are withheld, and the dashboard
   HTML-escapes all LLM text.
@@ -153,6 +161,8 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 
 ## Limitations
 
+- Revenue is the only metric, and the data is one synthetic orders table. Connecting a
+  warehouse or uploading a CSV is the next step.
 - Attribution, not causation. A SUPPORTED finding means the evidence is consistent and
   large; it does not rule out an unobserved driver.
 - Investigators' SQL runs locally in isolated DuckDB workspaces; only their LLM steps run

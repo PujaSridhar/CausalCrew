@@ -155,6 +155,11 @@ These resolve points the spec left open or that the data showed were wrong. All 
 * Changelog notes whose title names a segment always become leads, so the LLM can't drop a relevant note; the LLM fills the remaining lead slots.
 * Memory: SUPPORTED findings go to `memory/findings.jsonl` and back into the planner prompt; Cognee write-back is opt-in (`--remember`) because Gemini's free tier (20 requests/model/day) can't sustain Cognee during a live demo.
 
+* Question stage: users ask their own question. Relative periods ("last two weeks") are computed in code; an LLM once returned 15-day windows for that phrase. Other phrasings are read by Gemini via RocketRide and validated against the data, and users can set dates explicitly.
+* Freshness means the data covers the window asked about (max(date) ≥ the current window's end), not a fixed date.
+* LLM replies are parsed as JSON or as Python literals via `ast.literal_eval` (RocketRide's Gemini node can return a Python repr); never executed.
+* The web dashboard (`make app`) is the product surface; the CLI stays for scripted runs.
+
 ## Working rules for Claude Code
 
 * Keep a working end-to-end path at all times; commit after every working step.
