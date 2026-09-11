@@ -1,73 +1,52 @@
 # Causal Crew
 
-**A hypothesis swarm that explains why an AI pipeline regressed.**
+**Is the number real? If yes, every lead gets its own investigator — and the evidence decides.**
 
-A metric moves. A planner agent reads the changelog and proposes competing
-hypotheses for why. Each hypothesis is handed to its own agent with its own
-isolated database, where it builds the derived tables it needs to test that
-hypothesis and nothing else. A judge ranks the surviving hypotheses by
-measured effect size. Findings are written back to memory so the next
-investigation starts smarter.
+When a business metric moves, Causal Crew first checks whether the number can
+be trusted. If the data is broken — a day loaded twice, a feed that stopped, a
+unit change — it stops and says which check failed. If the data is sound, a
+planner turns the data and company context into competing leads, and each lead
+gets its own investigator agent with its own isolated database. A
+deterministic judge weighs the evidence and hands down verdicts. Verified
+findings become memory for the next question.
 
-Causal Crew hunts causal *leads*. Every lead is backed by a measured effect
-size and linked to the change record that explains it. It does not claim to
-prove causation.
+Causal Crew does attribution, not causal proof: it reports which segments
+account for a change, by how much, and what context lines up with it.
 
-## The domain: AI pipeline observability
+See [CLAUDE.md](CLAUDE.md) for the full spec.
 
-The dataset is LLM request traces — every call the pipeline made, with model,
-prompt version, tool path, tokens, latency, cost, and outcome. The question is
-the one every AI team has lost a weekend to: *our success rate dropped and our
-cost per task jumped, and the dashboard is pointing at the wrong thing.*
+## Pipeline
 
-## Architecture
+1. **Health check** — deterministic PASS/FAIL on freshness, row counts, duplicates, null spikes, and scale breaks.
+2. **Context** — Cognee turns changelogs and incident notes into searchable knowledge.
+3. **Planner** — proposes 3–4 leads, both data-driven and context-driven.
+4. **Investigators** — one per lead, in parallel, each in its own Hotdata database.
+5. **Judge** — deterministic checks for noise, seasonality, consistency, and timing; overlap merge; verdicts.
+6. **Report** — every number with the SQL behind it.
+7. **Memory** — findings written back to Cognee.
 
-| Layer | Tool | Job |
-|---|---|---|
-| Orchestration | RocketRide | Planner, the parallel hypothesis agents, and the judge run as pipeline steps |
-| Isolated compute | Hotdata | One database per hypothesis agent — each writes its own derived tables |
-| Memory | Cognee | Ingests the changelog so the planner proposes grounded hypotheses, then stores findings |
-| Security | Snyk | Scans the repo and its dependencies |
+Orchestrated as a RocketRide pipeline.
 
-**Why the isolation is real:** these agents *write*. Each one builds its own
-cohort tables, filtered slices, and intermediate aggregates to test its own
-hypothesis. Pointed at one shared database they collide on table names and
-leave each other's scratch state behind. A database per hypothesis is the
-whole point.
+## Status
 
-## The dataset
+Pre-build prep only. What exists today:
 
-`data/generate_traces.py` produces 146,788 trace rows across 14 days
-(2026-08-28 to 2026-09-10), deterministic under a fixed seed.
+- `data/generate_orders.py` — the demo dataset generator
+- `data/verify_orders.py` — a throwaway oracle that checks the demo data reads as designed
+- `context/` — ten changelog and incident notes for Cognee
+- `causal_crew/config.py` — every threshold in one place
+
+## Demo data
+
+The data is **synthetic**, with a planted cause. See
+[PLANTED_CAUSE.md](PLANTED_CAUSE.md) for exactly what was planted.
 
 ```bash
-python3 data/generate_traces.py
-python3 data/verify_plant.py
+python3 data/generate_orders.py   # ~10s, deterministic
+python3 data/verify_orders.py     # exits non-zero if the demo wouldn't read as designed
 ```
 
-Outputs `data/traces.csv` (19MB, for ingest) and `data/traces.parquet` (3.9MB).
+Outputs `data/orders.{parquet,csv}` (clean) and `data/orders_broken.{parquet,csv}`
+(one day loaded twice). Generated files are gitignored.
 
-Schema: `trace_id, ts, date, tenant_id, task_type, prompt_version, model,
-tool_path, doc_pages, context_chunks, input_tokens, output_tokens, latency_ms,
-cost_usd, status, failure_reason, attempt, parent_trace_id`
-
-`context/` holds the changelog corpus for Cognee: eight documents covering
-deploys, a routing change, a customer expansion, an on-call handoff, a vendor
-incident, and a support escalation.
-
-See `PLANTED_CAUSE.md` for what was planted and why. It is checked in on
-purpose — the demo dataset is synthetic and says so.
-
-## What makes the demo land
-
-The obvious answer is wrong, and it is wrong in a way you can measure.
-
-Aggregate numbers point straight at tenant Acme, whose volume tripled one day
-before the real cause shipped. The on-call engineer blamed Acme. Support filed
-an escalation blaming Acme and proposed rate-limiting them. Every dashboard
-would agree.
-
-Acme is innocent. Slice to the affected cohort and Acme's failure rate and
-everyone else's collapse by the same amount on the same day — the day prompt
-v4 shipped. Causal Crew rejects the tenant hypothesis with a number instead of
-an opinion.
+Schema: `order_id, date, region, product_category, channel, customer_type, units, revenue`
