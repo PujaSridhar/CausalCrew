@@ -37,6 +37,9 @@ PLANNER_DATA_LEADS = 2        # always include the largest single-dimension delt
 PLANNER_MAX_LEADS = 4
 PLANNER_CONTEXT_DAYS = 7      # context notes from this many days before the current window
 GEMINI_TIMEOUT_S = 45
+# Separate from Cognee's LLM_MODEL: Gemini's free tier is 20 requests/day per
+# model, and Cognee's ingest uses many. The planner makes one call per run.
+PLANNER_MODEL = "gemini-2.5-flash-lite"
 
 # --- [4] Investigator -------------------------------------------------------
 MIN_DRILL_DEPTH = 2

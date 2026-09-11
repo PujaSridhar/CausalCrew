@@ -83,7 +83,7 @@ Return JSON only, in this shape:
 def ask_gemini(prompt):
     load_dotenv(C.ENV_PATH)
     key = os.environ.get("LLM_API_KEY", "").strip()
-    model = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash").split("/", 1)[-1]
+    model = (os.environ.get("PLANNER_MODEL") or C.PLANNER_MODEL).split("/", 1)[-1]
     if not key:
         raise RuntimeError("LLM_API_KEY is not set")
     body = {"contents": [{"parts": [{"text": prompt}]}],
@@ -116,10 +116,13 @@ def validate(candidates, values, taken, event_files):
 
 
 def keyword_leads(events, values, taken):
-    """Fallback: a context note that names a data value becomes a lead on that value."""
+    """Fallback: a context note whose title names a data value becomes a lead on it.
+
+    Titles only: bodies are too loose (the shipping-fee note names East only to
+    say it is unchanged)."""
     cands = []
     for e in events:
-        text = e["text"].lower()
+        text = e["title"].lower()
         for dim, vals in values.items():
             for v in vals:
                 if re.search(rf"\b{re.escape(v.lower())}\b", text):

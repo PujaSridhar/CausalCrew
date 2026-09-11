@@ -27,14 +27,26 @@ See [CLAUDE.md](CLAUDE.md) for the full spec.
 
 Orchestrated as a RocketRide pipeline.
 
-## Status
+## Run the demo
 
-Pre-build prep only. What exists today:
+```bash
+.venv/bin/python -m causal_crew.run --broken   # Run A: health check fails, names the duplicated day, stops
+.venv/bin/python -m causal_crew.run            # Run B: planner, parallel investigators, judge, report
+```
 
-- `data/generate_orders.py` — the demo dataset generator
-- `data/verify_orders.py` — a throwaway oracle that checks the demo data reads as designed
-- `context/` — ten changelog and incident notes for Cognee
-- `causal_crew/config.py` — every threshold in one place
+Reports land in `reports/` as Markdown and JSON, with the SQL behind every number.
+
+## What's built
+
+| Stage | Module | Notes |
+|---|---|---|
+| Health check | `causal_crew/health.py` | freshness, row counts, duplicates, null spikes, scale break |
+| Planner | `causal_crew/planner.py` | data-driven leads from SQL; Gemini adds context leads; title-keyword fallback if Gemini is down |
+| Investigator | `causal_crew/investigator.py`, `workspace.py` | one isolated database per lead (local DuckDB while Hotdata access is pending) |
+| Judge | `causal_crew/judge.py` | noise, seasonality, consistency, timing, overlap merge, verdicts |
+| Runner + report | `causal_crew/run.py` | stages in order, investigators in parallel |
+| Memory | `scripts/ingest_context.py` | loads context notes into Cognee; the planner reads the notes directly as the spec's fallback |
+| Orchestration | RocketRide | staging connection verified; pipeline in progress |
 
 ## Setup
 

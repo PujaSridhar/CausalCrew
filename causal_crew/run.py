@@ -55,6 +55,11 @@ def _finish(report, out_dir, t0):
     return report
 
 
+def _cell(x):
+    """Escape pipes so evidence like |z| doesn't split a Markdown table cell."""
+    return str(x).replace("|", "\\|")
+
+
 def _pct(x):
     return "—" if x is None else f"{x:.1%}"
 
@@ -69,7 +74,7 @@ def render_markdown(r):
            f"## 1. Can this number be trusted? {r['health']['status']}", "",
            "| check | result | evidence |", "|---|---|---|"]
     for c in r["health"]["checks"]:
-        out.append(f"| {c['name']} | {'PASS' if c['ok'] else '**FAIL**'} | {c['evidence']} |")
+        out.append(f"| {c['name']} | {'PASS' if c['ok'] else '**FAIL**'} | {_cell(c['evidence'])} |")
     if r["outcome"] == "STOPPED":
         out += ["", f"**Don't trust this number yet.** Failed: {', '.join(r['health']['failed'])}. "
                     "The investigation stopped here; fix the data before explaining the change.", ""]
@@ -84,7 +89,7 @@ def render_markdown(r):
     out += ["", "## 3. Findings, ranked by the judge", "",
             "| # | lead | segment | share of change | verdict |", "|---|---|---|---|---|"]
     for f in r["judgement"]["findings"]:
-        out.append(f"| {f['rank']} | {f['lead_id']} | `{f['segment']}` | {_pct(f['contribution'])} | {f['verdict']} |")
+        out.append(f"| {f['rank']} | {f['lead_id']} | `{_cell(f['segment'])}` | {_pct(f['contribution'])} | {_cell(f['verdict'])} |")
 
     for f in r["judgement"]["findings"]:
         out += ["", f"### #{f['rank']} {f['lead_id']} — {f['verdict']}", ""]
