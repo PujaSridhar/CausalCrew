@@ -78,20 +78,53 @@ def run(orders_path=C.ORDERS_PATH, question=C.DEMO_QUESTION, windows=None, out_d
                                         for lead in leads]})
     decide = decide or investigator.llm_decider
 
+    t_inv_start = time.time()
+
     def investigate(lead):
         emit("investigator", "running", {"lead_id": lead["lead_id"]})
+        t0_lead = time.time()
         finding = investigator.investigate(lead["lead_id"], lead["segment"], lead["hypothesis"], windows=w,
                                            orders_path=orders_path, root=root, decide=decide)
+        finding["duration_s"] = round(time.time() - t0_lead, 2)
         emit("investigator", "done", {"lead_id": lead["lead_id"],
                                        "decided_by": [lvl["decided_by"] for lvl in finding["drill_path"]]})
         return finding
 
     with ThreadPoolExecutor(max_workers=len(leads)) as pool:
         findings = list(pool.map(investigate, leads))
+    inv_wall_clock = round(time.time() - t_inv_start, 2)
     report["investigations"] = findings
     emit("judge", "running", {})
     report["judgement"] = judge_mod.judge(findings, orders_path=orders_path, windows=w)
     emit("judge", "done", {"verdicts": {f["lead_id"]: f["verdict"] for f in report["judgement"]["findings"]}})
+
+    # Telemetry: multi-agent concurrency, isolation, and query stats
+    report["telemetry"] = {
+        "concurrency_mode": "Parallel Wave (ThreadPoolExecutor)",
+        "isolation_backend": "DuckDB Task-Scoped Workspaces",
+        "parallel_agents": len(findings),
+        "wall_clock_s": inv_wall_clock,
+        "sequential_equivalent_s": round(sum(f.get("duration_s", 0.0) for f in findings), 2),
+        "speedup": round(sum(f.get("duration_s", 0.0) for f in findings) / max(0.01, inv_wall_clock), 1),
+        "total_queries": sum(len(f.get("queries", [])) for f in findings) + len(report["judgement"]["queries"]),
+        "agents": [
+            {
+                "lead_id": f["lead_id"],
+                "segment": f["final_segment"],
+                "database": f"{f['lead_id']}.duckdb",
+                "tables_count": len(f.get("tables", [])),
+                "queries_count": len(f.get("queries", [])),
+                "duration_s": f.get("duration_s", 0.0),
+                "engines": [lvl["decided_by"] for lvl in f.get("drill_path", [])],
+                "verdict": next(
+                    (jf["verdict"] for jf in report["judgement"]["findings"] if jf["lead_id"] == f["lead_id"]),
+                    "UNKNOWN",
+                ),
+            }
+            for f in findings
+        ]
+    }
+
     recorded = memory.write_back(report["judgement"]["findings"], report["question"],
                                  report["windows"], memory_path)
     report["memory"] = {"prior": report["plan"]["memory_considered"], "recorded": recorded, "cognee": None}

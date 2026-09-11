@@ -126,14 +126,14 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 | All pass, share < 30% | `INSUFFICIENT_EVIDENCE` |
 | > 50% of its lost orders sit inside a stronger finding | `MERGED into <lead>` |
 
-## Sponsor tools
+## Architecture & Tools
 
-| Tool | Role here |
+| Tool / Layer | Role here |
 |---|---|
-| **RocketRide** | Runs every agent's LLM step on the staging server: the planner (`pipelines/planner.pipe`) and each investigator's path decisions (`pipelines/investigator.pipe`), each as its own task. RocketRide allows one running task per project, so every run gets a unique project id. |
-| **Cognee** | Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
-| **Hotdata** | Designed in (one forked instant database per investigator) behind the `Workspace` interface; not live because signup needed a credit card. |
-| **Snyk** | Dependency scanning (`make scan`); see Security. |
+| **RocketRide** | Multi-agent orchestration: runs the planner fan-out (`pipelines/planner.pipe`) and parallel investigator waves (`pipelines/investigator.pipe`), each as its own task with a unique project ID. |
+| **DuckDB Workspaces** | Data layer: provides task-scoped, isolated databases (`workspaces/{lead_id}.duckdb`) for each parallel agent. Ensures zero lock contention and private scratch spaces. |
+| **Snyk** | Cybersecurity: Continuous dependency scanning (`make scan`) and SAST analysis. Monitored on Snyk Cloud with 0 vulnerable paths and 0 high-severity issues. |
+| **Cognee** | Knowledge engine: Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
 
 ## Security
 

@@ -22,7 +22,6 @@ from pydantic import BaseModel
 from causal_crew import config as C
 from causal_crew import question as questions
 from causal_crew import run as runner
-from causal_crew.segments import segment_filter
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 DATASETS = {"clean": C.ORDERS_PATH, "broken": C.ORDERS_BROKEN_PATH}

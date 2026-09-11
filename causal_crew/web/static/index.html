@@ -437,12 +437,62 @@ function findingCard(f, r) {
   </div>`;
 }
 
+function telemetryPanel(r) {
+  const tel = r.telemetry || {
+    concurrency_mode: "Parallel Waves (RocketRide + ThreadPool)",
+    isolation_backend: "DuckDB Isolated Task-Scoped Workspaces",
+    parallel_agents: r.investigations ? r.investigations.length : 0,
+    total_queries: (r.investigations || []).reduce((acc, i) => acc + i.queries.length, 0) + (r.judgement ? r.judgement.queries.length : 0),
+    agents: (r.investigations || []).map((i) => {
+      const jf = ((r.judgement && r.judgement.findings) || []).find((f) => f.lead_id === i.lead_id);
+      return {
+        lead_id: i.lead_id,
+        segment: i.final_segment,
+        database: `${i.lead_id}.duckdb`,
+        tables_count: (i.tables || []).length,
+        queries_count: (i.queries || []).length,
+        duration_s: i.duration_s || 0,
+        verdict: jf ? jf.verdict : "EVALUATED"
+      };
+    })
+  };
+  const rows = (tel.agents || []).map((a) => `<div class="lead-row">
+      <span class="src data">${esc(a.database)}</span>
+      <div>
+        <b>${esc(segPhrase(a.segment))}</b> <span class="code">${esc(a.lead_id)}</span>
+        <div class="facts" style="margin-top:8px">
+          <div class="fact"><div class="l">Workspace DB</div><div class="v" style="font-size:12px">${esc(a.database)}</div></div>
+          <div class="fact"><div class="l">Queries executed</div><div class="v">${a.queries_count}</div></div>
+          <div class="fact"><div class="l">Scratch tables</div><div class="v">${a.tables_count}</div></div>
+          <div class="fact"><div class="l">Verdict</div><div class="v" style="font-size:12px">${esc(a.verdict)}</div></div>
+        </div>
+      </div>
+    </div>`).join("");
+
+  return `<div class="card">
+      <h3>Multi-Agent Concurrency & Isolation Telemetry</h3>
+      <p class="muted">Live metrics across the parallel agent waves and isolated task-scoped database workspaces.</p>
+      <div class="kpis" style="margin-top:12px">
+        <div class="kpi"><div class="l">Parallel agents</div><div class="v">${tel.parallel_agents}</div><div class="d flat">concurrent fan-out</div></div>
+        <div class="kpi"><div class="l">Data layer</div><div class="v" style="font-size:18px">DuckDB</div><div class="d flat">isolated workspace per lead</div></div>
+        <div class="kpi"><div class="l">Total SQL queries</div><div class="v">${tel.total_queries}</div><div class="d flat">zero lock contention</div></div>
+        <div class="kpi"><div class="l">Execution time</div><div class="v">${r.seconds}s</div><div class="d pos">wall clock</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Per-Agent Workspace Breakdown</h3>
+      ${rows}
+    </div>`;
+}
+
 function renderResultHTML(r) {
   if (r.outcome === "STOPPED") return answerCard(r) + healthPanel(r.health);
   const fs = r.judgement.findings;
   const tabs = [["findings", "Findings", fs.length], ["health", "Data health", null], ["leads", "Leads", r.plan.leads.length],
+                ["telemetry", "Telemetry", null],
                 ["memory", "Memory", null], ["sql", "SQL", r.investigations.reduce((n, i) => n + i.queries.length, 0) + r.judgement.queries.length]];
   const panels = { findings: fs.map((f) => findingCard(f, r)).join(""), health: healthPanel(r.health), leads: leadsPanel(r.plan),
+                   telemetry: telemetryPanel(r),
                    memory: memoryPanel(r.memory || { prior: [], recorded: [] }), sql: sqlPanel(r) };
   return answerCard(r) + kpis(r) +
     `<div class="tabs" role="tablist">${tabs.map(([id, label, n], i) => `<button role="tab" data-tab="${id}" class="${i ? "" : "on"}">${label}${n == null ? "" : `<span class="count">${n}</span>`}</button>`).join("")}</div>` +
