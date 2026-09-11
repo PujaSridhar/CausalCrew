@@ -41,9 +41,11 @@ Pre-build prep only. What exists today:
 ```bash
 uv venv .venv --python 3.13
 uv pip install --python .venv/bin/python -r requirements.txt
-brew install hotdata-dev/tap/cli
+brew install hotdata-dev/tap/cli snyk-cli
 cp .env.example .env    # then fill in keys
 hotdata auth login      # opens a browser
+snyk auth               # opens a browser
+.venv/bin/python scripts/check_env.py   # PASS/FAIL/SKIP per service
 ```
 
 ## Demo data
