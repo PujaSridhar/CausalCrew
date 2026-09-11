@@ -1,10 +1,16 @@
 PY := .venv/bin/python
 
-.PHONY: setup data test check demo-a demo-b app
+.PHONY: setup setup-cognee data test check scan demo-a demo-b app
 
-setup:           ## create the venv and install dependencies
-	uv venv .venv --python 3.13
+setup:           ## create the venv (with pip, which Snyk needs) and install core dependencies
+	uv venv --seed .venv --python 3.13
 	uv pip install --python $(PY) -r requirements.txt
+
+setup-cognee:    ## optional: Cognee memory integration (see README > Security)
+	uv pip install --python $(PY) -r requirements-cognee.txt
+
+scan:            ## Snyk dependency scan of the core requirements
+	snyk test --file=requirements.txt --command=$(PY) --package-manager=pip
 
 data:            ## generate the demo orders and verify the planted story
 	$(PY) data/generate_orders.py

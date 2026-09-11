@@ -1,7 +1,7 @@
-# Sponsor SDKs (verified official on PyPI, 2026-09-10/11)
+# Core: everything the pipeline, the demo, and the web dashboard need.
+# Sponsor SDKs verified official on PyPI (2026-09-10/11).
 rocketride==1.3.0
 hotdata[arrow]==0.10.0
-cognee[fastembed]==1.5.4
 
 # Data
 duckdb==1.5.5
@@ -9,8 +9,16 @@ pandas==3.0.5
 numpy==2.5.3
 pyarrow==25.0.1
 
-# Dev
-pytest==9.1.1
+# Web dashboard
+fastapi==0.141.1
+uvicorn==0.52.4
+
 python-dotenv==1.2.3
 
+# Dev
+pytest==9.1.1
+ruff==0.16.7
+httpx==0.28.1
+
+# Optional Cognee memory: requirements-cognee.txt
 # System tools (not pip): brew install hotdata-dev/tap/cli snyk-cli

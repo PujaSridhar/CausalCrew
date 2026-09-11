@@ -1,0 +1,8 @@
+# Optional: Cognee memory (scripts/ingest_context.py and `run --remember`).
+# The demo and the web dashboard never import cognee.
+#
+# Snyk (2026-09-11) reports 5 issues in cognee 1.5.4 and its dependencies,
+# none with a fixed version yet: arbitrary code injection in cognee,
+# deserialization of untrusted data in diskcache, and session/auth issues in
+# litellm's proxy server (never started here). See README > Security.
+cognee[fastembed]==1.5.4

@@ -126,7 +126,30 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 | **RocketRide** | Runs every agent's LLM step on the staging server: the planner (`pipelines/planner.pipe`) and each investigator's path decisions (`pipelines/investigator.pipe`), each as its own task. RocketRide allows one running task per project, so every run gets a unique project id. |
 | **Cognee** | Changelog notes loaded into a knowledge graph (`scripts/ingest_context.py`); verified findings can be pushed back with `--remember`. |
 | **Hotdata** | Designed in (one forked instant database per investigator) behind the `Workspace` interface; not live because signup needed a credit card. |
-| **Snyk** | Dependency and code scanning of this repo. |
+| **Snyk** | Dependency scanning (`make scan`); see Security. |
+
+## Security
+
+- **Dependencies (Snyk).** `make scan` tests the 34 core dependencies: no known
+  vulnerabilities (2026-09-11).
+- **Cognee is isolated as an optional extra** (`requirements-cognee.txt`,
+  `make setup-cognee`). Snyk reports 5 issues in cognee 1.5.4 and its dependencies,
+  none with a fixed version yet: arbitrary code injection in cognee (critical),
+  deserialization of untrusted data in diskcache (high), and session and
+  authentication issues in litellm's proxy server (high, medium). The demo and the
+  dashboard never import cognee. It loads only in `scripts/ingest_context.py` and
+  `run --remember`, both opt-in and run on our own changelog notes, and the litellm
+  proxy server is never started.
+- **Secrets** live only in `.env`. Pipeline files hold `${ROCKETRIDE_GEMINI_KEY}`
+  placeholders, and commits were scanned for key material before every push.
+- **LLM output is untrusted input.** Planner leads are validated against real
+  dimension values, investigator path choices against the statistical threshold,
+  rationales that cite a number not in the evidence are withheld, and the dashboard
+  HTML-escapes all LLM text.
+- **SQL.** Dimension names are checked against config; values are always bound as
+  parameters.
+- **Static analysis.** `ruff` runs in CI. Snyk Code (SAST) has to be enabled for the
+  Snyk organization before `snyk code test` will run.
 
 ## Limitations
 
@@ -153,4 +176,5 @@ tests/           unit tests on deterministic fixtures (CI: .github/workflows/tes
 ## Setup details
 
 Copy `.env.example` to `.env` and fill in `ROCKETRIDE_APIKEY` and `LLM_API_KEY` (Gemini).
-`make check` smoke-tests every service.
+`make check` smoke-tests every service. `make setup-cognee` adds the optional Cognee
+memory integration; `make app` serves the dashboard at http://localhost:8000.

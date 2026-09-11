@@ -71,10 +71,10 @@ def check_cognee():
     try:
         import cognee  # noqa: F401
         import fastembed  # noqa: F401
-        report("Cognee", "PASS", f"configured: {os.environ['LLM_PROVIDER']} LLM + fastembed "
-                                  "(config only; no LLM call made)")
-    except Exception as e:
-        report("Cognee", "FAIL", f"{type(e).__name__}: {e}")
+    except ImportError:
+        return report("Cognee", "SKIP", "optional: make setup-cognee")
+    report("Cognee", "PASS", f"configured: {os.environ['LLM_PROVIDER']} LLM + fastembed "
+                              "(config only; no LLM call made)")
 
 
 def check_cli(name, binary, hint):
