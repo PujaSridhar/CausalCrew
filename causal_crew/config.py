@@ -8,12 +8,14 @@ DEMO_METRIC = "revenue"
 DEMO_CURRENT_WINDOW = ("2026-08-27", "2026-09-09")
 DEMO_BASELINE_WINDOW = ("2026-08-13", "2026-08-26")
 DEMO_EXPECTED_LATEST_DATE = "2026-09-09"
+DEMO_QUESTION = "Revenue dropped in the last two weeks. Why?"
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDERS_PATH = os.path.join(_ROOT, "data", "orders.parquet")
 ORDERS_BROKEN_PATH = os.path.join(_ROOT, "data", "orders_broken.parquet")
 WORKSPACE_DIR = os.path.join(_ROOT, "workspaces")
 CONTEXT_DIR = os.path.join(_ROOT, "context")
+ENV_PATH = os.path.join(_ROOT, ".env")
 
 DIMENSIONS = ("region", "product_category", "channel", "customer_type")
 KEY_COLUMNS = ("order_id", "date", "region", "product_category",
@@ -29,6 +31,12 @@ ROW_COUNT_ROBUST_Z = 3.0          # median/MAD, MAD scaled by 1.4826
 ROW_COUNT_MIN_REL_DEV = 0.25
 NULL_SPIKE_MAX_PP = 5.0           # percentage points vs baseline
 SCALE_BREAK_RATIO = (0.2, 5.0)    # median order value, current / baseline
+
+# --- [3] Planner -------------------------------------------------------------
+PLANNER_DATA_LEADS = 2        # always include the largest single-dimension deltas
+PLANNER_MAX_LEADS = 4
+PLANNER_CONTEXT_DAYS = 7      # context notes from this many days before the current window
+GEMINI_TIMEOUT_S = 45
 
 # --- [4] Investigator -------------------------------------------------------
 MIN_DRILL_DEPTH = 2
