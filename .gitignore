@@ -15,3 +15,6 @@ workspaces/
 
 # generated reports
 reports/
+
+# vendor agent skills (hotdata manage skills install --project)
+.agents/
