@@ -28,7 +28,7 @@
  *     composable: true
  *   rote_version: 0.82.0
  *   version: 0.1.0
- *   status: draft
+ *   status: released
  *   kind: atomic
  *   flow_type: sequential
  *   execution_model: steps_with_presentation
