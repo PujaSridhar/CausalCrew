@@ -1,0 +1,27 @@
+schema_version = 1
+
+[[tools]]
+id = "uv"
+command = "uv"
+required = true
+
+[[tools.install]]
+manager = "brew"
+package = "uv"
+
+[[tools.install]]
+manager = "system"
+notes = "Install uv from https://docs.astral.sh/uv/. On first run it fetches pinned duckdb, numpy, pandas, pyarrow and python-dotenv into its cache."
+
+[[tools]]
+id = "python3"
+command = "python3"
+required = true
+
+[[tools.install]]
+manager = "brew"
+package = "python@3"
+
+[[tools.install]]
+manager = "apt"
+package = "python3"

@@ -1,6 +1,9 @@
 PY := .venv/bin/python
 
-.PHONY: setup setup-cognee data test check scan demo-a demo-b app
+PLAYS := data-health-check metric-drop-replay
+FLOWS := $(HOME)/.rote/flows
+
+.PHONY: setup setup-cognee data test check scan demo-a demo-b app plays
 
 setup:           ## create the venv (with pip, which Snyk needs) and install core dependencies
 	uv venv --seed .venv --python 3.13
@@ -31,3 +34,11 @@ demo-b:          ## Run B: clean data, full investigation
 
 app:             ## web dashboard at http://localhost:8000
 	$(PY) -m uvicorn causal_crew.web.app:app --port 8000
+
+plays:           ## build the Rote Play packages and install them into ~/.rote/flows
+	for p in $(PLAYS); do \
+		$(PY) scripts/build_play_resources.py rote/$$p/resources > /dev/null && \
+		mkdir -p $(FLOWS)/$$p && rm -rf $(FLOWS)/$$p/resources && \
+		cp -R rote/$$p/main.ts rote/$$p/deps.toml rote/$$p/deno.json rote/$$p/resources $(FLOWS)/$$p/ && \
+		echo "installed $(FLOWS)/$$p"; \
+	done

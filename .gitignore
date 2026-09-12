@@ -22,5 +22,8 @@ reports/
 # findings memory written by runs
 memory/
 
+# Rote Play resources, rebuilt from causal_crew/ by `make plays`
+rote/*/resources/
+
 # local Claude Code preview config
 .claude/

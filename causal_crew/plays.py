@@ -183,7 +183,12 @@ def main(argv=None):
             out = replay_play(json.load(f), orders, windows, root=args.workspaces)
     json.dump(out, sys.stdout, indent=2, default=str)
     sys.stdout.write("\n")
-    return 1 if out.get("outcome") == "STOPPED" or out.get("status") == "FAIL" else 0
+    failed = out.get("outcome") == "STOPPED" or out.get("status") == "FAIL"
+    if failed:
+        evidence = out.get("evidence") or {c["name"]: c["evidence"] for c in out.get("checks", []) if not c["ok"]}
+        print("data failed its health check: " + "; ".join(f"{k}: {v}" for k, v in evidence.items()),
+              file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
