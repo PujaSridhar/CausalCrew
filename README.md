@@ -77,6 +77,46 @@ and duplicate order ids, both naming 2026-09-03, and the run stops.
 | 3 | New customers | West, new customers | — | **MERGED into West** — the same lost orders |
 | 4 | Web in West | West, web | — | **MERGED into West** |
 
+## Rote Plays: from memory to muscle memory
+
+The first answer to "why did revenue drop?" is expensive: the planner and the
+investigator agents reason through RocketRide, and on the demo data that took
+**65 seconds and 8 LLM path decisions** to land on West → new customers. The next
+time the same question comes up, nothing needs to be re-reasoned. Causal Crew saves
+the drill-down path of every SUPPORTED finding as a recipe, and two
+[Rote](https://www.modiqo.ai) Plays turn that into deterministic, shareable code.
+
+| Play | What it does | Steps |
+|---|---|---|
+| [`data-health-check`](rote/data-health-check/main.ts) | Is this number real? Six deterministic checks on any orders CSV or parquet file. Says OK or DON'T TRUST THIS NUMBER YET, with the evidence. | `check_health` |
+| [`metric-drop-replay`](rote/metric-drop-replay/main.ts) | Replays the learned drill-down with **0 LLM calls**, re-measures every number in SQL, re-runs the judge, and says whether today's data still supports the saved path. | `check_health` → `replay_drilldown` (a failed health check blocks the replay) |
+
+```bash
+make plays                                                          # build and install into ~/.rote/flows
+rote play run ~/.rote/flows/data-health-check/main.ts orders=demo-broken
+rote play run ~/.rote/flows/metric-drop-replay/main.ts orders=demo
+rote play run ~/.rote/flows/data-health-check/main.ts orders=/abs/path/orders.csv days=7
+```
+
+`orders=demo` generates the seeded demo data inside the run; `demo-broken` is the same
+data with one day loaded twice. Results on the demo data:
+
+| Run | Result |
+|---|---|
+| Learn (`python -m causal_crew.plays learn`) | LLM crew via RocketRide: 65 s, 8 path decisions → recipe [`region-west.json`](plays/recipes/region-west.json) |
+| `metric-drop-replay orders=demo` | 0 LLM calls, replay step 1.3 s: West new customers, 58.9% of the change, change point 2026-08-27, SUPPORTED + CONTEXT_LINKED |
+| `metric-drop-replay orders=demo-broken` | `check_health` fails on 2026-09-03 (+73% rows, 1,433 duplicate order ids); `replay_drilldown` is blocked |
+| `data-health-check orders=demo-broken` | FAIL: row_counts and duplicates, both naming 2026-09-03 |
+
+How they were made: each Play was recorded with `rote proc run` in a clean Rote
+workspace, exported with `rote workspace export`, then generalized: recorded literals
+became `$orders`/`$days` parameters, host paths became packaged `@resource{…}` files,
+dependencies are pinned through `uv`, and a presentation renders the JSON the steps
+print. The packaged Python is the same deterministic code as the app
+(`causal_crew/plays.py`, entry point `plays/crew.py`), rebuilt into each package's
+`resources/` by `scripts/build_play_resources.py`. A replayed recipe that the data no
+longer supports is flagged, not silently trusted.
+
 ## Design decisions
 
 - **Deterministic core, LLM at the edges.** Health checks, drill-downs, statistics, and
