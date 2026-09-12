@@ -22,6 +22,22 @@ def test_health_play_passes_clean_data(orders):
     assert out["status"] == "PASS" and out["trust"] == "OK"
 
 
+def test_csv_input_is_converted_once(orders, tmp_path):
+    import duckdb
+    csv = str(tmp_path / "orders.csv")
+    with duckdb.connect() as con:
+        con.execute(f"COPY (SELECT * FROM read_parquet('{orders}')) TO '{csv}' (HEADER)")
+    converted = plays.as_parquet(csv, str(tmp_path / "ws"))
+    assert converted.endswith("orders.parquet")
+    assert plays.health_play(converted, WINDOWS)["status"] == "PASS"
+    assert plays.as_parquet(orders, str(tmp_path / "ws")) == orders
+
+
+def test_main_exits_1_when_the_data_fails(orders, tmp_path, capsys):
+    assert plays.main(["health", "--orders", orders, "--workspaces", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["trust"] == "OK"
+
+
 def test_recipe_keeps_only_the_chosen_steps(orders, tmp_path):
     f = investigate("west", {"region": "West"}, orders_path=orders, events=EVENTS, root=str(tmp_path))
     f.update(verdict="SUPPORTED", contribution=f["final_contribution"])

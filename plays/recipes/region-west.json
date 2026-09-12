@@ -1,0 +1,29 @@
+{
+  "lead_id": "region-west",
+  "hypothesis": "region = West has one of the largest revenue changes between the windows.",
+  "learned_from": {
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "verdict": "SUPPORTED + CONTEXT_LINKED",
+    "contribution": 0.5886,
+    "change_point": "2026-08-27"
+  },
+  "start_segment": {
+    "region": "West"
+  },
+  "path": [
+    {
+      "dimension": "customer_type",
+      "value": "new"
+    }
+  ]
+}

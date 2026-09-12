@@ -111,22 +111,27 @@ def build(rng):
     return df.reset_index(drop=True)
 
 
-def write(df, name):
-    df.to_parquet(os.path.join(HERE, f"{name}.parquet"), index=False)
-    df.to_csv(os.path.join(HERE, f"{name}.csv"), index=False)
-    print(f"wrote {len(df):,} rows -> data/{name}.parquet, data/{name}.csv")
+def write(df, name, out=HERE, csv=True):
+    df.to_parquet(os.path.join(out, f"{name}.parquet"), index=False)
+    if csv:
+        df.to_csv(os.path.join(out, f"{name}.csv"), index=False)
+    print(f"wrote {len(df):,} rows -> {os.path.join(out, name)}.parquet" + (", .csv" if csv else ""))
 
 
-def main():
+def main(out=HERE):
+    """Write to data/ by default; a Rote Play passes its run directory instead (parquet only)."""
+    csv = out == HERE
+    os.makedirs(out, exist_ok=True)
     rng = np.random.default_rng(SEED)
     clean = build(rng)
-    write(clean, "orders")
+    write(clean, "orders", out, csv)
 
     dup = clean[clean["date"] == DUPLICATED_DAY]
     broken = pd.concat([clean, dup], ignore_index=True).sort_values("date", kind="stable")
-    write(broken.reset_index(drop=True), "orders_broken")
+    write(broken.reset_index(drop=True), "orders_broken", out, csv)
     print(f"broken copy: {len(dup):,} rows of {DUPLICATED_DAY} loaded twice")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(sys.argv[1] if len(sys.argv) > 1 else HERE)

@@ -10,7 +10,9 @@ learn   The full crew (planner and investigators steered by the LLM). Every SUPP
 replay  Muscle memory: re-run a recipe's drill-down path on fresh data with no LLM
         calls, then judge it with the same deterministic evidence checks.
 
-Windows default to the latest N days of data against the N days before them.
+--orders takes a parquet or CSV file with the orders columns. Windows default to the
+latest N days of data against the N days before them. Exit code 1 means the data
+failed the health check.
 """
 
 import argparse
@@ -24,9 +26,20 @@ import duckdb
 
 from causal_crew import config as C
 from causal_crew import health, investigator, judge, memory
-from causal_crew import run as pipeline
 
 RECIPE_DIR = os.path.join(os.path.dirname(memory.MEMORY_PATH), "recipes")
+
+
+def as_parquet(path, workdir):
+    """CSV in, parquet out (in workdir); parquet passes through."""
+    if not path.lower().endswith(".csv"):
+        return path
+    os.makedirs(workdir, exist_ok=True)
+    out = os.path.join(workdir, os.path.splitext(os.path.basename(path))[0] + ".parquet")
+    with duckdb.connect() as con:
+        con.execute("COPY (SELECT * FROM read_csv_auto(?)) TO '" + out.replace("'", "''") + "' (FORMAT parquet)",
+                    [path])
+    return out
 
 
 def latest_windows(orders_path, days=C.QUESTION_DEFAULT_DAYS):
@@ -37,7 +50,7 @@ def latest_windows(orders_path, days=C.QUESTION_DEFAULT_DAYS):
     return {"baseline": (c0 - timedelta(days=days), c0 - timedelta(days=1)), "current": (c0, end)}
 
 
-def _windows(args):
+def _windows(args, orders_path):
     if args.current:
         c0, c1 = (date.fromisoformat(d) for d in args.current)
         if args.baseline:
@@ -46,7 +59,7 @@ def _windows(args):
             n = (c1 - c0).days + 1
             b0, b1 = c0 - timedelta(days=n), c0 - timedelta(days=1)
         return {"baseline": (b0, b1), "current": (c0, c1)}
-    return latest_windows(args.orders, args.days)
+    return latest_windows(orders_path, args.days)
 
 
 def _iso(windows):
@@ -70,9 +83,10 @@ def recipe_from(finding, question, windows):
 
 
 def learn_play(orders_path, windows, question, recipe_dir=RECIPE_DIR, **run_kwargs):
+    from causal_crew import run as pipeline  # the LLM stack loads only when learning
+
     t0 = time.time()
-    report = pipeline.run(orders_path, question=question, windows=_iso(windows),
-                          **run_kwargs)
+    report = pipeline.run(orders_path, question=question, windows=_iso(windows), **run_kwargs)
     out = {"play": "learn", "data": os.path.basename(orders_path), "windows": report["windows"],
            "health": report["health"]["status"], "outcome": report["outcome"], "recipes": [],
            "llm_engines": [], "seconds": round(time.time() - t0, 1), "report": report["files"]["markdown"]}
@@ -94,7 +108,7 @@ def learn_play(orders_path, windows, question, recipe_dir=RECIPE_DIR, **run_kwar
 
 def recipe_decider(path):
     """Follow the saved path. Each step records whether today's data still supports it."""
-    def decide(lead_id, hypothesis, segment, level, candidates):
+    def decide(_lead_id, _hypothesis, _segment, level, candidates):
         if level > len(path):
             return {"dimension": None, "value": None, "decided_by": "recipe", "reason": "end of the saved path"}
         step = path[level - 1]
@@ -114,7 +128,9 @@ def replay_play(recipe, orders_path, windows, root=C.WORKSPACE_DIR, events=None)
     out = {"play": "replay", "lead_id": recipe["lead_id"], "data": os.path.basename(orders_path),
            "windows": _iso(windows), "health": checked["status"], "llm_calls": 0}
     if checked["status"] == "FAIL":
-        out.update(outcome="STOPPED", failed=checked["failed"], seconds=round(time.time() - t0, 1))
+        out.update(outcome="STOPPED", failed=checked["failed"],
+                   evidence={c["name"]: c["evidence"] for c in checked["checks"] if not c["ok"]},
+                   seconds=round(time.time() - t0, 1))
         return out
     decide = recipe_decider(recipe["path"])
     steps = []
@@ -128,14 +144,14 @@ def replay_play(recipe, orders_path, windows, root=C.WORKSPACE_DIR, events=None)
                                        windows=windows, orders_path=orders_path, events=events,
                                        root=root, decide=tracking)
     judged = judge.judge([finding], orders_path=orders_path, windows=windows)["findings"][0]
-    out.update(outcome="REPLAYED", segment=judged["segment"], contribution=judged["contribution"],
+    followed = [s for s in steps if s.get("dimension")]
+    out.update(outcome="REPLAYED", recipe_learned_from=recipe.get("learned_from"),
+               segment=judged["segment"], contribution=judged["contribution"],
                change_point=judged["change_point"], volume_rate=judged["volume_rate"],
                linked_context=judged["linked_context"], verdict=judged["verdict"],
                checks={k: v["ok"] for k, v in judged["checks"].items()},
-               path=[s for s in steps if s.get("dimension")],
-               path_still_supported=all(s.get("still_supported", True) for s in steps if s.get("dimension")),
-               queries=len(finding["queries"]),
-               seconds=round(time.time() - t0, 1))
+               path=followed, path_still_supported=all(s["still_supported"] for s in followed),
+               queries=len(finding["queries"]), seconds=round(time.time() - t0, 1))
     return out
 
 
@@ -144,24 +160,27 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="play", required=True)
     for name in ("health", "learn", "replay"):
         p = sub.add_parser(name)
-        p.add_argument("--orders", default=C.ORDERS_PATH, help="orders parquet file")
+        p.add_argument("--orders", default=C.ORDERS_PATH, help="orders file, parquet or CSV")
         p.add_argument("--current", nargs=2, metavar=("START", "END"), help="current window (ISO dates)")
         p.add_argument("--baseline", nargs=2, metavar=("START", "END"), help="baseline window (ISO dates)")
         p.add_argument("--days", type=int, default=C.QUESTION_DEFAULT_DAYS,
                        help="window length when no dates are given")
+        p.add_argument("--workspaces", default=C.WORKSPACE_DIR,
+                       help="where scratch databases and converted files go")
         if name == "learn":
             p.add_argument("-q", "--question", default=C.DEMO_QUESTION)
         if name == "replay":
             p.add_argument("--recipe", required=True, help="recipe JSON written by learn")
     args = ap.parse_args(argv)
-    windows = _windows(args)
+    orders = as_parquet(args.orders, args.workspaces)
+    windows = _windows(args, orders)
     if args.play == "health":
-        out = health_play(args.orders, windows)
+        out = health_play(orders, windows)
     elif args.play == "learn":
-        out = learn_play(args.orders, windows, args.question)
+        out = learn_play(orders, windows, args.question, root=args.workspaces)
     else:
         with open(args.recipe) as f:
-            out = replay_play(json.load(f), args.orders, windows)
+            out = replay_play(json.load(f), orders, windows, root=args.workspaces)
     json.dump(out, sys.stdout, indent=2, default=str)
     sys.stdout.write("\n")
     return 1 if out.get("outcome") == "STOPPED" or out.get("status") == "FAIL" else 0
