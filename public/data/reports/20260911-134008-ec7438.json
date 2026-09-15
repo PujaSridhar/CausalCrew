@@ -1,0 +1,85 @@
+{
+  "id": "20260911-134008-ec7438",
+  "created_at": "2026-09-11T20:40:08+00:00",
+  "question": "Revenue dropped in the last two weeks. Why?",
+  "data": "orders_broken.parquet",
+  "windows": {
+    "baseline": [
+      "2026-08-13",
+      "2026-08-26"
+    ],
+    "current": [
+      "2026-08-27",
+      "2026-09-09"
+    ]
+  },
+  "interpretation": {
+    "source": "rule",
+    "note": null,
+    "data_range": [
+      "2025-08-01",
+      "2026-09-09"
+    ]
+  },
+  "health": {
+    "status": "FAIL",
+    "failed": [
+      "row_counts",
+      "duplicates"
+    ],
+    "checks": [
+      {
+        "name": "freshness",
+        "ok": true,
+        "evidence": "data runs through 2026-09-09; the question needs 2026-09-09",
+        "days": [],
+        "sql": "SELECT max(date) FROM orders"
+      },
+      {
+        "name": "row_counts",
+        "ok": false,
+        "evidence": "worst day 2026-09-03: +73% vs trailing 28-day median 1,654, |z| = 28.7",
+        "days": [
+          "2026-09-03"
+        ],
+        "sql": "SELECT date, count(*) AS n FROM orders WHERE date BETWEEN ? AND ? GROUP BY date ORDER BY date"
+      },
+      {
+        "name": "duplicates",
+        "ok": false,
+        "evidence": "1,433 duplicate order_ids on 2026-09-03",
+        "days": [
+          "2026-09-03"
+        ],
+        "sql": "SELECT date, count(*) AS extra FROM (SELECT order_id, date, count(*) OVER (PARTITION BY order_id) AS c FROM orders) WHERE c > 1 GROUP BY date ORDER BY date"
+      },
+      {
+        "name": "duplicate_days",
+        "ok": true,
+        "evidence": "no day repeats another day's rows",
+        "days": [],
+        "sql": "SELECT date, md5(string_agg(concat_ws('|', CAST(region AS VARCHAR), CAST(product_category AS VARCHAR), CAST(channel AS VARCHAR), CAST(customer_type AS VARCHAR), CAST(units AS VARCHAR), CAST(revenue AS VARCHAR)), ',' ORDER BY region, product_category, channel, customer_type, units, revenue)) AS fp FROM orders GROUP BY date"
+      },
+      {
+        "name": "null_spike",
+        "ok": true,
+        "evidence": "largest null-rate rise: order_id +0.00pp",
+        "days": [],
+        "sql": "SELECT avg(CASE WHEN order_id IS NULL THEN 1.0 ELSE 0 END) AS order_id, avg(CASE WHEN date IS NULL THEN 1.0 ELSE 0 END) AS date, avg(CASE WHEN region IS NULL THEN 1.0 ELSE 0 END) AS region, avg(CASE WHEN product_category IS NULL THEN 1.0 ELSE 0 END) AS product_category, avg(CASE WHEN channel IS NULL THEN 1.0 ELSE 0 END) AS channel, avg(CASE WHEN customer_type IS NULL THEN 1.0 ELSE 0 END) AS customer_type, avg(CASE WHEN units IS NULL THEN 1.0 ELSE 0 END) AS units, avg(CASE WHEN revenue IS NULL THEN 1.0 ELSE 0 END) AS revenue FROM orders WHERE date BETWEEN ? AND ?"
+      },
+      {
+        "name": "scale_break",
+        "ok": true,
+        "evidence": "median order value 73.66 -> 72.43 (ratio 0.983)",
+        "days": [],
+        "sql": "SELECT median(revenue) FROM orders WHERE date BETWEEN ? AND ?"
+      }
+    ]
+  },
+  "outcome": "STOPPED",
+  "seconds": 0.6,
+  "files": {
+    "json": "/Users/Pujasridhar/causal-crew/reports/run_a_broken.json",
+    "markdown": "/Users/Pujasridhar/causal-crew/reports/run_a_broken.md"
+  }
+}
