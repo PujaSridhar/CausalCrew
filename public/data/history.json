@@ -1,0 +1,278 @@
+[
+  {
+    "id": "20260912-110951-2fec42",
+    "created_at": "2026-09-12T18:09:51+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-152618-3a41b7",
+    "created_at": "2026-09-11T22:26:18+00:00",
+    "question": "Revenue dropped in the last two weeks? why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-152549-501f18",
+    "created_at": "2026-09-11T22:25:49+00:00",
+    "question": "revenue dropped in the last two weeks? why?",
+    "data": "orders_broken.parquet",
+    "outcome": "STOPPED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": null,
+    "top": null
+  },
+  {
+    "id": "20260911-152146-f7650d",
+    "created_at": "2026-09-11T22:21:46+00:00",
+    "question": "Revenue dropped in the last two weeks? why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-152041-e02106",
+    "created_at": "2026-09-11T22:20:41+00:00",
+    "question": "Revenue dropped in last two weeks why?",
+    "data": "orders_broken.parquet",
+    "outcome": "STOPPED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": null,
+    "top": null
+  },
+  {
+    "id": "20260911-151503-a001c2",
+    "created_at": "2026-09-11T22:15:03+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-150408-1f8e42",
+    "created_at": "2026-09-11T22:04:08+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-143155-395e90",
+    "created_at": "2026-09-11T21:31:55+00:00",
+    "question": "Why did revenue move over the past month?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-07-12",
+        "2026-08-10"
+      ],
+      "current": [
+        "2026-08-11",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.0302,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-134742-b6113a",
+    "created_at": "2026-09-11T20:47:42+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  },
+  {
+    "id": "20260911-134737-23555d",
+    "created_at": "2026-09-11T20:47:37+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders_broken.parquet",
+    "outcome": "STOPPED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": null,
+    "top": null
+  },
+  {
+    "id": "20260911-134008-ec7438",
+    "created_at": "2026-09-11T20:40:08+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders_broken.parquet",
+    "outcome": "STOPPED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": null,
+    "top": null
+  },
+  {
+    "id": "20260911-134008-3a88f5",
+    "created_at": "2026-09-11T20:40:08+00:00",
+    "question": "Revenue dropped in the last two weeks. Why?",
+    "data": "orders.parquet",
+    "outcome": "INVESTIGATED",
+    "windows": {
+      "baseline": [
+        "2026-08-13",
+        "2026-08-26"
+      ],
+      "current": [
+        "2026-08-27",
+        "2026-09-09"
+      ]
+    },
+    "change": -0.1439,
+    "top": {
+      "segment": {
+        "region": "West",
+        "customer_type": "new"
+      },
+      "verdict": "SUPPORTED + CONTEXT_LINKED"
+    }
+  }
+]

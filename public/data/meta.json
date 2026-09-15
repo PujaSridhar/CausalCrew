@@ -1,0 +1,24 @@
+{
+  "question": "Revenue dropped in the last two weeks. Why?",
+  "suggestions": [
+    "Revenue dropped in the last two weeks. Why?",
+    "What explains the change in revenue over the last 3 weeks?",
+    "Why did revenue move over the past month?",
+    "Is last week's revenue number real?"
+  ],
+  "data_range": {
+    "clean": [
+      "2025-08-01",
+      "2026-09-09"
+    ],
+    "broken": [
+      "2025-08-01",
+      "2026-09-09"
+    ]
+  },
+  "window_days": {
+    "min": 3,
+    "max": 90,
+    "default": 14
+  }
+}
